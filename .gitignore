@@ -1,6 +1,12 @@
 # Archive — too large, reference only
 archive/
 
+# Local reference docs — not for repo
+CLAUDE.md
+Context_reference.md
+catalog/
+pipeline/
+
 # Data files
 *.parquet
 *.csv
