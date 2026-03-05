@@ -1,0 +1,25 @@
+# Archive — too large, reference only
+archive/
+
+# Data files
+*.parquet
+*.csv
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Environment
+venv*/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
