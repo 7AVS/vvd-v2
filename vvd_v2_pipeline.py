@@ -14,9 +14,9 @@
 #
 # Structure: Each section below is one notebook cell.
 # Cells 1-4: Data pipeline (run once per session)
-# Cells 5-7: Analysis (re-run as many times as you want)
-# Cell 8: Export
-# Cell 9: Cleanup
+# Cells 5-9: Analysis (re-run as many times as you want)
+# Cell 10: Export
+# Cell 11: Cleanup
 # ====================================================================
 
 
@@ -370,7 +370,7 @@ result_df.groupBy("MNE", "TST_GRP_CD").agg(
 ).orderBy("MNE", "TST_GRP_CD").show(50, truncate=False)
 
 print("Data pipeline complete. result_df is persisted.")
-print("Re-run cells 5-7 below as many times as needed.")
+print("Re-run cells 5-9 below as many times as needed.")
 
 
 # ============================================================
@@ -841,7 +841,299 @@ for row in transition_matrix:
 
 
 # ============================================================
-# CELL 8: EXPORT
+# CELL 8: PHASE 4 — CHANNEL ANALYSIS (TACTIC_CELL_CD)
+# Re-runnable. Uses persisted result_df.
+# ============================================================
+
+# TACTIC_CELL_CD encodes the delivery channel for each deployment.
+# Known codes: EM (email), IM (in-app message), MB (mobile), XX (control holdout),
+# plus combos like EM_IM, IM_MB, IM_EM_MB.
+# Understanding channel mix is critical for knowing which touchpoints drive success.
+
+# --- 4.1 Channel Distribution by Campaign and Test Group ---
+# Shows how deployments are split across channels within each campaign.
+# Control group (TG7) is typically all XX (holdout), while action group (TG4) has real channels.
+print("=" * 60)
+print("CHANNEL DISTRIBUTION BY CAMPAIGN & TEST GROUP")
+print("=" * 60)
+
+channel_dist = (
+    result_df
+    .withColumn("CHANNEL", F.trim(F.col("TACTIC_CELL_CD")))
+    .groupBy("MNE", "TST_GRP_CD", "CHANNEL")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+    )
+    .orderBy("MNE", "TST_GRP_CD", F.desc("deployments"))
+    .collect()
+)
+
+print(f"{'MNE':<6} {'Group':<6} {'Channel':<12} {'Deployments':>12} {'Clients':>10}")
+print("-" * 50)
+for row in channel_dist:
+    print(f"{str(row.MNE):<6} {str(row.TST_GRP_CD):<6} {str(row.CHANNEL):<12} {int(row.deployments):>12,} {int(row.clients):>10,}")
+
+# --- 4.2 Channel Balance Check ---
+# For each campaign, compare the channel mix between action and control.
+# If control is all XX, that's the expected holdout pattern.
+# If action has a very different channel mix across campaigns, flag it.
+print(f"\n{'='*60}")
+print("CHANNEL BALANCE CHECK")
+print("=" * 60)
+
+# Build per-campaign channel profile
+channel_data = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+for row in channel_dist:
+    channel_data[str(row.MNE)][str(row.TST_GRP_CD)][str(row.CHANNEL)] += int(row.deployments)
+
+for mne in sorted(channel_data.keys()):
+    action_channels = channel_data[mne].get(ACTION_GROUP, {})
+    control_channels = channel_data[mne].get(CONTROL_GROUP, {})
+    action_total = sum(action_channels.values())
+    control_total = sum(control_channels.values())
+
+    # Check if control is all XX
+    control_xx_pct = control_channels.get("XX", 0) / control_total * 100 if control_total > 0 else 0
+    control_pattern = "XX-only holdout" if control_xx_pct > 95 else "mixed channels"
+    print(f"\n{mne} ({CAMPAIGNS[mne]['name']}):")
+    print(f"  Control pattern: {control_pattern} ({control_xx_pct:.1f}% XX)")
+    print(f"  Action channels:")
+    for ch in sorted(action_channels.keys(), key=lambda c: action_channels[c], reverse=True):
+        ch_pct = action_channels[ch] / action_total * 100
+        print(f"    {ch:<12} {action_channels[ch]:>10,} ({ch_pct:>5.1f}%)")
+
+# --- 4.3 Success Rate by Channel (Action Group Only) ---
+# Since control is typically XX (holdout), channel-level success rates are only
+# meaningful for the action group. This shows which channels drive conversion.
+print(f"\n{'='*60}")
+print("SUCCESS RATE BY CHANNEL (Action Group)")
+print("=" * 60)
+
+channel_success = (
+    result_df
+    .filter(F.col("TST_GRP_CD") == ACTION_GROUP)
+    .withColumn("CHANNEL", F.trim(F.col("TACTIC_CELL_CD")))
+    .groupBy("MNE", "CHANNEL")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .withColumn("success_rate", F.col("successes") / F.col("deployments") * 100)
+    .orderBy("MNE", F.desc("success_rate"))
+    .collect()
+)
+
+print(f"{'MNE':<6} {'Channel':<12} {'Deployments':>12} {'Successes':>10} {'Success Rate':>13}")
+print("-" * 57)
+for row in channel_success:
+    print(f"{str(row.MNE):<6} {str(row.CHANNEL):<12} {int(row.deployments):>12,} {int(row.successes):>10,} {float(row.success_rate):>12.2f}%")
+
+# --- 4.4 Lift by Channel ---
+# If control group shares the same channel codes as action (not XX-only),
+# we can compute per-channel lift. Otherwise, show action-only rates with a note.
+print(f"\n{'='*60}")
+print("LIFT BY CHANNEL")
+print("=" * 60)
+
+# Build action and control rates by MNE x channel
+channel_rates = defaultdict(lambda: defaultdict(dict))
+channel_all = (
+    result_df
+    .withColumn("CHANNEL", F.trim(F.col("TACTIC_CELL_CD")))
+    .groupBy("MNE", "TST_GRP_CD", "CHANNEL")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .withColumn("success_rate", F.col("successes") / F.col("deployments") * 100)
+    .collect()
+)
+
+for row in channel_all:
+    channel_rates[str(row.MNE)][(str(row.TST_GRP_CD), str(row.CHANNEL))] = {
+        "deployments": int(row.deployments),
+        "successes": int(row.successes),
+        "rate": float(row.success_rate)
+    }
+
+for mne in sorted(channel_rates.keys()):
+    rates = channel_rates[mne]
+    control_channels_set = {ch for (tg, ch) in rates.keys() if tg == CONTROL_GROUP}
+    action_channels_set = {ch for (tg, ch) in rates.keys() if tg == ACTION_GROUP}
+    control_is_xx = control_channels_set == {"XX"} or (len(control_channels_set) == 1 and "XX" in control_channels_set)
+
+    print(f"\n{mne} ({CAMPAIGNS[mne]['name']}):")
+    if control_is_xx:
+        # Control is holdout only -- cannot compute per-channel lift
+        overall_ctrl = rates.get((CONTROL_GROUP, "XX"), {})
+        ctrl_rate = overall_ctrl.get("rate", 0)
+        print(f"  Control is XX-only (rate: {ctrl_rate:.2f}%). Showing action rates vs overall control:")
+        print(f"  {'Channel':<12} {'Action Rate':>12} {'vs Control':>11}")
+        print(f"  {'-'*38}")
+        for ch in sorted(action_channels_set):
+            a = rates.get((ACTION_GROUP, ch), {})
+            a_rate = a.get("rate", 0)
+            diff = a_rate - ctrl_rate
+            print(f"  {ch:<12} {a_rate:>11.2f}% {diff:>+10.2f}%")
+    else:
+        # Both groups have matching channels -- compute per-channel lift
+        all_channels = action_channels_set | control_channels_set
+        print(f"  {'Channel':<12} {'Action Rate':>12} {'Control Rate':>13} {'Abs Lift':>9} {'Rel Lift':>9}")
+        print(f"  {'-'*58}")
+        for ch in sorted(all_channels):
+            a = rates.get((ACTION_GROUP, ch), {})
+            c = rates.get((CONTROL_GROUP, ch), {})
+            a_rate = a.get("rate", 0)
+            c_rate = c.get("rate", 0)
+            abs_lift = a_rate - c_rate
+            rel_lift = ((a_rate - c_rate) / c_rate * 100) if c_rate > 0 else 0
+            note = ""
+            if not a:
+                note = " (action N/A)"
+            elif not c:
+                note = " (control N/A)"
+            print(f"  {ch:<12} {a_rate:>11.2f}% {c_rate:>12.2f}% {abs_lift:>+8.2f}% {rel_lift:>+8.1f}%{note}")
+
+# --- 4.5 Multi-Channel Clients ---
+# Clients who received contacts via multiple channels within the same campaign.
+# High multi-channel rates suggest orchestrated multi-touch or data issues.
+print(f"\n{'='*60}")
+print("MULTI-CHANNEL CLIENTS (Action Group)")
+print("=" * 60)
+
+multi_channel = (
+    result_df
+    .filter(F.col("TST_GRP_CD") == ACTION_GROUP)
+    .withColumn("CHANNEL", F.trim(F.col("TACTIC_CELL_CD")))
+    .groupBy("CLNT_NO", "MNE")
+    .agg(F.countDistinct("CHANNEL").alias("distinct_channels"))
+)
+
+multi_channel_dist = (
+    multi_channel
+    .groupBy("MNE", "distinct_channels")
+    .agg(F.count("*").alias("clients"))
+    .orderBy("MNE", "distinct_channels")
+    .collect()
+)
+
+print(f"{'MNE':<6} {'Channels':>9} {'Clients':>10}")
+print("-" * 28)
+for row in multi_channel_dist:
+    print(f"{str(row.MNE):<6} {int(row.distinct_channels):>9} {int(row.clients):>10,}")
+
+multi_total = (
+    multi_channel
+    .filter(F.col("distinct_channels") > 1)
+    .groupBy("MNE")
+    .agg(F.count("*").alias("multi_clients"))
+    .collect()
+)
+
+if multi_total:
+    print(f"\nClients with 2+ channels per campaign:")
+    for row in multi_total:
+        print(f"  {str(row.MNE)}: {int(row.multi_clients):,}")
+else:
+    print("\nNo multi-channel clients found (each client used a single channel per campaign).")
+
+
+# ============================================================
+# CELL 9: PHASE 5 — REPORT GROUP ANALYSIS (RPT_GRP_CD)
+# Re-runnable. Uses persisted result_df.
+# ============================================================
+
+# RPT_GRP_CD is a report group code assigned during experiment setup.
+# It can represent sub-segments (e.g., risk tier, customer lifecycle stage) used
+# for stratified analysis. Understanding how success varies by report group
+# reveals whether certain segments respond better to campaigns.
+
+# --- 5.1 RPT_GRP_CD Distribution ---
+# How many deployments and clients fall into each report group, by campaign.
+print("=" * 60)
+print("REPORT GROUP DISTRIBUTION")
+print("=" * 60)
+
+rpt_dist = (
+    result_df
+    .groupBy("MNE", "RPT_GRP_CD")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+    )
+    .orderBy("MNE", "RPT_GRP_CD")
+    .collect()
+)
+
+print(f"{'MNE':<6} {'RPT_GRP_CD':<14} {'Deployments':>12} {'Clients':>10}")
+print("-" * 45)
+for row in rpt_dist:
+    print(f"{str(row.MNE):<6} {str(row.RPT_GRP_CD):<14} {int(row.deployments):>12,} {int(row.clients):>10,}")
+
+# --- 5.2 Success Rate by Report Group ---
+# Per campaign, show how success rate differs across report groups and test groups.
+# This is the key table for stratified performance analysis.
+print(f"\n{'='*60}")
+print("SUCCESS RATE BY REPORT GROUP & TEST GROUP")
+print("=" * 60)
+
+rpt_success = (
+    result_df
+    .groupBy("MNE", "RPT_GRP_CD", "TST_GRP_CD")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .withColumn("success_rate", F.col("successes") / F.col("deployments") * 100)
+    .orderBy("MNE", "RPT_GRP_CD", "TST_GRP_CD")
+    .collect()
+)
+
+print(f"{'MNE':<6} {'RPT_GRP_CD':<14} {'Group':<6} {'Deployments':>12} {'Successes':>10} {'Rate':>8}")
+print("-" * 60)
+for row in rpt_success:
+    print(f"{str(row.MNE):<6} {str(row.RPT_GRP_CD):<14} {str(row.TST_GRP_CD):<6} {int(row.deployments):>12,} {int(row.successes):>10,} {float(row.success_rate):>7.2f}%")
+
+# --- 5.3 Lift by Report Group ---
+# For each campaign x report group, compute action vs control rates and lift.
+# Identifies which sub-segments benefit most from the campaign treatment.
+print(f"\n{'='*60}")
+print("LIFT BY REPORT GROUP")
+print("=" * 60)
+
+# Build lookup: (MNE, RPT_GRP_CD, TST_GRP_CD) -> stats
+rpt_data = defaultdict(lambda: defaultdict(dict))
+for row in rpt_success:
+    rpt_data[(str(row.MNE), str(row.RPT_GRP_CD))][str(row.TST_GRP_CD)] = {
+        "deployments": int(row.deployments),
+        "successes": int(row.successes),
+        "rate": float(row.success_rate)
+    }
+
+print(f"{'MNE':<6} {'RPT_GRP_CD':<14} {'Action Rate':>12} {'Control Rate':>13} {'Abs Lift':>9} {'Rel Lift':>9}")
+print("-" * 66)
+
+for (mne, rpt) in sorted(rpt_data.keys()):
+    action = rpt_data[(mne, rpt)].get(ACTION_GROUP, {})
+    control = rpt_data[(mne, rpt)].get(CONTROL_GROUP, {})
+
+    a_rate = action.get("rate", 0)
+
+    if not control:
+        # No control clients for this report group
+        print(f"{mne:<6} {rpt:<14} {a_rate:>11.2f}% {'N/A':>13} {'N/A':>9} {'N/A':>9}  (no control)")
+        continue
+
+    c_rate = control.get("rate", 0)
+    abs_lift = a_rate - c_rate
+    rel_lift = ((a_rate - c_rate) / c_rate * 100) if c_rate > 0 else 0
+
+    print(f"{mne:<6} {rpt:<14} {a_rate:>11.2f}% {c_rate:>12.2f}% {abs_lift:>+8.2f}% {rel_lift:>+8.1f}%")
+
+
+# ============================================================
+# CELL 10: EXPORT
 # Re-runnable. Converts summary to pandas for CSV download.
 # ============================================================
 
@@ -868,7 +1160,7 @@ print(perf_summary.head(20).to_string(index=False))
 
 
 # ============================================================
-# CELL 9: CLEANUP
+# CELL 11: CLEANUP
 # Run when done to release cluster memory.
 # ============================================================
 
