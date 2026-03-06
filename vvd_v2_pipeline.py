@@ -78,14 +78,15 @@ METRIC_TO_COLUMN = {
 }
 
 # Source table paths (Hive parquet on HDFS)
-TACTIC_EVNT_HIST_PATH = "/prod/sz/tsz/00150/cc/DTZTA_T_TACTIC_EVNT_HIST/EVNT_STRT_DT={year}*"
+TACTIC_EVNT_HIST_BASE = "/prod/sz/tsz/00150/cc/DTZTA_T_TACTIC_EVNT_HIST/"
 CARD_DATA_PATH = "/prod/sz/tsz/00050/data/DDWTA_VISA_DR_CRD/PartitionColumn=Latest/CAPTR_DT={year}*"
 POS_TXN_PATH = "/prod/sz/tsz/00050/data/DDWTA_T_PT_OF_SALE_TXN/SNAP_DT={year}*"
 
 # Years to include
 YEARS = [2024, 2025, 2026]
 
-# VVD MNE codes
+# VVD MNE codes — NOTE: MNE is DERIVED from TACTIC_ID via substring(TACTIC_ID, 8, 3)
+# It does NOT exist as a raw column in tactic_evnt_hist
 VVD_MNES = list(CAMPAIGNS.keys())
 
 # Test group codes
@@ -101,40 +102,44 @@ CONTROL_GROUP = "TG7"
 
 # ============================================================
 # M1: EXPERIMENT POPULATION
-# Read tactic_evnt_hist and filter to VVD campaigns
+# Mirrors Vintage/Vvd vintage_engine.py v2.5 (lines 261-306)
+#
+# KEY: MNE does NOT exist as a raw column in tactic_evnt_hist.
+#      It is DERIVED: MNE = substring(TACTIC_ID, 8, 3)
+#      CLNT_NO is DERIVED: regexp_replace(trim(TACTIC_EVNT_ID), "^0+", "")
 # ============================================================
 
-# Read across all configured years
-tactic_paths = [TACTIC_EVNT_HIST_PATH.format(year=y) for y in YEARS]
-raw_tactic = None
-for path in tactic_paths:
-    try:
-        df_year = spark.read.parquet(path)
-        raw_tactic = df_year if raw_tactic is None else raw_tactic.unionByName(df_year, allowMissingColumns=True)
-    except Exception as e:
-        print(f"Warning: Could not read {path}: {e}")
+# Read parquet — single read across year partitions (no unionByName needed)
+tactic_paths = [TACTIC_EVNT_HIST_BASE + f"EVNT_STRT_DT={y}*" for y in YEARS]
+raw_tactic = spark.read.option("basePath", TACTIC_EVNT_HIST_BASE).parquet(*tactic_paths)
 
-if raw_tactic is None:
-    raise RuntimeError("No tactic_evnt_hist data found. Check paths and years.")
-
-# Extract CLNT_NO from TACTIC_EVNT_ID (strip leading zeros)
-# Filter to VVD campaigns only, keep TG4 and TG7
+# Derive MNE from TACTIC_ID and filter to VVD campaigns
+# Derive CLNT_NO from TACTIC_EVNT_ID (strip leading zeros)
+# Trim TST_GRP_CD and RPT_GRP_CD (whitespace in raw data)
 tactic_df = (
     raw_tactic
+    .filter(F.substring(F.col("TACTIC_ID"), 8, 3).isin(VVD_MNES))
+    .withColumn("MNE", F.substring(F.col("TACTIC_ID"), 8, 3))
     .withColumn("CLNT_NO", F.regexp_replace(F.trim(F.col("TACTIC_EVNT_ID")), "^0+", ""))
-    .filter(F.col("MNE").isin(VVD_MNES))
+    .withColumn("TST_GRP_CD", F.trim(F.col("TST_GRP_CD")))
+    .withColumn("RPT_GRP_CD", F.trim(F.col("RPT_GRP_CD")))
     .filter(F.col("TST_GRP_CD").isin([ACTION_GROUP, CONTROL_GROUP]))
+    .withColumn("WINDOW_DAYS", F.datediff(F.col("TREATMT_END_DT"), F.col("TREATMT_STRT_DT")))
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
     .select(
         "CLNT_NO",
         "TACTIC_ID",
         "MNE",
         "TST_GRP_CD",
         "RPT_GRP_CD",
-        F.col("TREATMT_STRT_DT").cast("date").alias("TREATMT_STRT_DT"),
-        F.col("TREATMT_END_DT").cast("date").alias("TREATMT_END_DT"),
+        "TREATMT_STRT_DT",
+        "TREATMT_END_DT",
+        "TREATMT_MN",
+        "TACTIC_CELL_CD",
+        "WINDOW_DAYS",
+        "COHORT",
     )
-    .withColumn("COHORT", F.date_format("TREATMT_STRT_DT", "yyyy-MM"))
-    .dropDuplicates(["CLNT_NO", "TACTIC_ID", "MNE", "TST_GRP_CD", "TREATMT_STRT_DT"])
+    .distinct()
 )
 
 tactic_df.cache()
@@ -159,13 +164,11 @@ print(f"  Test groups: {[r.TST_GRP_CD for r in tactic_df.select('TST_GRP_CD').di
 # ============================================================
 
 card_paths = [CARD_DATA_PATH.format(year=y) for y in YEARS]
-raw_card = None
-for path in card_paths:
-    try:
-        df_year = spark.read.parquet(path)
-        raw_card = df_year if raw_card is None else raw_card.unionByName(df_year, allowMissingColumns=True)
-    except Exception as e:
-        print(f"Warning: Could not read {path}: {e}")
+try:
+    raw_card = spark.read.parquet(*card_paths)
+except Exception as e:
+    print(f"Warning: Could not read card data: {e}")
+    raw_card = None
 
 if raw_card is None:
     print("WARNING: Card data not found. card_acquisition and card_activation will be empty.")
@@ -212,13 +215,11 @@ else:
 # ============================================================
 
 txn_paths = [POS_TXN_PATH.format(year=y) for y in YEARS]
-raw_txn = None
-for path in txn_paths:
-    try:
-        df_year = spark.read.parquet(path)
-        raw_txn = df_year if raw_txn is None else raw_txn.unionByName(df_year, allowMissingColumns=True)
-    except Exception as e:
-        print(f"Warning: Could not read {path}: {e}")
+try:
+    raw_txn = spark.read.parquet(*txn_paths)
+except Exception as e:
+    print(f"Warning: Could not read POS data: {e}")
+    raw_txn = None
 
 if raw_txn is None:
     print("WARNING: POS transaction data not found. card_usage will be empty.")
@@ -316,35 +317,35 @@ success_dfs = {
 }
 
 # Start with tactic_df, add success columns per campaign's primary metric
+# Mirrors Vintage/Vvd vintage_engine.py detect_success() (lines 470-490)
 result_df = tactic_df
 
 for metric_name, success_col_name in METRIC_TO_COLUMN.items():
-    sdf = success_dfs[metric_name].alias("s")
+    sdf = success_dfs[metric_name]
 
     # Left join: client had a success event within treatment window
+    # Use column renaming to avoid ambiguity (not alias prefixes)
+    sdf_renamed = sdf.withColumnRenamed("CLNT_NO", "S_CLNT_NO").withColumnRenamed("SUCCESS_DT", "S_SUCCESS_DT")
+
     joined = (
-        result_df.alias("t")
+        result_df
         .join(
-            sdf,
-            (F.col("t.CLNT_NO") == F.col("s.CLNT_NO")) &
-            (F.col("s.SUCCESS_DT") >= F.col("t.TREATMT_STRT_DT")) &
-            (F.col("s.SUCCESS_DT") <= F.col("t.TREATMT_END_DT")),
+            sdf_renamed,
+            (F.col("CLNT_NO") == F.col("S_CLNT_NO")) &
+            (F.col("S_SUCCESS_DT") >= F.col("TREATMT_STRT_DT")) &
+            (F.col("S_SUCCESS_DT") <= F.col("TREATMT_END_DT")),
             "left"
         )
-        .withColumn(success_col_name, F.when(F.col("s.SUCCESS_DT").isNotNull(), 1).otherwise(0))
-        .withColumn(f"FIRST_{success_col_name}_DT", F.col("s.SUCCESS_DT"))
+        .withColumn(success_col_name, F.when(F.col("S_SUCCESS_DT").isNotNull(), 1).otherwise(0))
+        .withColumn(f"FIRST_{success_col_name}_DT", F.col("S_SUCCESS_DT"))
     )
 
     # Keep first success per deployment (deduplicate from multiple success events)
-    w = Window.partitionBy("t.CLNT_NO", "t.TACTIC_ID", "t.MNE", "t.TREATMT_STRT_DT").orderBy(F.col("s.SUCCESS_DT").asc_nulls_last())
+    w = Window.partitionBy("CLNT_NO", "TACTIC_ID", "MNE", "TREATMT_STRT_DT").orderBy(F.col("S_SUCCESS_DT").asc_nulls_last())
     joined = joined.withColumn("_rn", F.row_number().over(w)).filter(F.col("_rn") == 1).drop("_rn")
 
-    # Drop the joined success columns to avoid ambiguity
-    result_df = joined.select(
-        F.col("t.*"),
-        F.col(success_col_name),
-        F.col(f"FIRST_{success_col_name}_DT")
-    )
+    # Drop the join key columns to keep schema clean
+    result_df = joined.drop("S_CLNT_NO", "S_SUCCESS_DT")
 
 # Assign each row its campaign-specific SUCCESS flag
 result_df = result_df.withColumn(
