@@ -15,7 +15,7 @@
 # Structure: Each section below is one notebook cell.
 # Cells 1-4: Data pipeline (run once per session)
 # Cells 5-9: Analysis (re-run as many times as you want)
-# Cell 10: Export
+# Cell 10: Vintage curve construction
 # Cell 11: Cleanup
 # ====================================================================
 
@@ -282,6 +282,79 @@ except Exception as e:
     print(f"WARNING: wallet_provisioning extraction failed: {e}")
     wallet_provisioning_df = spark.createDataFrame([], "CLNT_NO STRING, SUCCESS_DT DATE")
 
+# --- M3d: Email engagement ---
+# Loads send/open/click/unsub events from EDW feedback tables for email-channel deployments.
+# Keyed on TREATMENT_ID (= TACTIC_ID in tactic_df) so we can join at the deployment level in M6.
+email_tactic_ids = [
+    str(r.TACTIC_ID) for r in
+    tactic_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
+    .select("TACTIC_ID").distinct().collect()
+]
+
+if email_tactic_ids:
+    tactic_id_list = "','".join(email_tactic_ids)
+    email_query = f"""
+SELECT
+    CAST(FEEDBACK_MASTER.CLNT_NO AS VARCHAR(20)) AS CLNT_NO,
+    FEEDBACK_MASTER.TREATMENT_ID,
+    MAX(CASE WHEN disposition_cd = 1 THEN 1 ELSE 0 END) AS EMAIL_SENT,
+    MAX(CASE WHEN disposition_cd = 2 THEN 1 ELSE 0 END) AS EMAIL_OPENED,
+    MAX(CASE WHEN disposition_cd = 3 THEN 1 ELSE 0 END) AS EMAIL_CLICKED,
+    MAX(CASE WHEN disposition_cd = 4 THEN 1 ELSE 0 END) AS EMAIL_UNSUBSCRIBED,
+    MAX(CASE WHEN disposition_cd = 1 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_SENT_DT,
+    MAX(CASE WHEN disposition_cd = 2 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_OPENED_DT,
+    MAX(CASE WHEN disposition_cd = 3 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_CLICKED_DT,
+    MAX(CASE WHEN disposition_cd = 4 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_UNSUBSCRIBED_DT
+FROM DTZV01.VENDOR_FEEDBACK_MASTER FEEDBACK_MASTER
+INNER JOIN DTZV01.VENDOR_FEEDBACK_EVENT FEEDBACK_EVENT
+    ON FEEDBACK_MASTER.consumer_id_hashed = FEEDBACK_EVENT.consumer_id_hashed
+    AND FEEDBACK_MASTER.TREATMENT_ID = FEEDBACK_EVENT.TREATMENT_ID
+WHERE FEEDBACK_MASTER.TREATMENT_ID IN ('{tactic_id_list}')
+GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
+"""
+    try:
+        cursor = EDW.cursor()
+        cursor.execute(email_query)
+        email_results = cursor.fetchall()
+        cursor.close()
+        # CLNT_NO is VARCHAR from Teradata — strip whitespace and leading zeros like wallet
+        email_engagement_df = spark.createDataFrame(
+            [
+                (str(r[0]).strip().lstrip('0'), str(r[1]),
+                 int(r[2]), int(r[3]), int(r[4]), int(r[5]),
+                 r[6], r[7], r[8], r[9])
+                for r in email_results
+            ],
+            "CLNT_NO STRING, TREATMENT_ID STRING, "
+            "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
+            "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
+        )
+        print(f"M3d: email_engagement: {email_engagement_df.count():,} rows")
+    except NameError:
+        print("WARNING: EDW cursor not available. email_engagement will be empty.")
+        email_engagement_df = spark.createDataFrame(
+            [],
+            "CLNT_NO STRING, TREATMENT_ID STRING, "
+            "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
+            "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
+        )
+    except Exception as e:
+        print(f"WARNING: email_engagement extraction failed: {e}")
+        email_engagement_df = spark.createDataFrame(
+            [],
+            "CLNT_NO STRING, TREATMENT_ID STRING, "
+            "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
+            "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
+        )
+else:
+    print("M3d: No email tactic IDs found. email_engagement will be empty.")
+    email_engagement_df = spark.createDataFrame(
+        [],
+        "CLNT_NO STRING, TREATMENT_ID STRING, "
+        "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
+        "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
+    )
+
 # --- Pre-filter success DFs to experiment participants only ---
 # Eliminates non-experiment rows BEFORE the M6 shuffle.
 # Critical for POS transactions (card_usage) — tens of millions of rows down to ~2-3M.
@@ -354,6 +427,29 @@ for mne, cfg in CAMPAIGNS.items():
     col_name = METRIC_TO_COLUMN[cfg["primary_metric"]]
     success_expr = F.when(F.col("MNE") == mne, F.col(col_name)).otherwise(success_expr)
 result_df = result_df.withColumn("SUCCESS", success_expr)
+
+# Join email engagement at the deployment level (CLNT_NO + TACTIC_ID == TREATMENT_ID).
+# Non-email deployments get 0 for binary columns, NULL for date columns.
+email_renamed = (
+    email_engagement_df
+    .withColumnRenamed("CLNT_NO", "E_CLNT_NO")
+    .withColumnRenamed("TREATMENT_ID", "E_TREATMENT_ID")
+)
+
+result_df = (
+    result_df
+    .join(
+        email_renamed,
+        (F.col("CLNT_NO") == F.col("E_CLNT_NO")) &
+        (F.col("TACTIC_ID") == F.col("E_TREATMENT_ID")),
+        "left"
+    )
+    .withColumn("EMAIL_SENT", F.coalesce(F.col("EMAIL_SENT"), F.lit(0)))
+    .withColumn("EMAIL_OPENED", F.coalesce(F.col("EMAIL_OPENED"), F.lit(0)))
+    .withColumn("EMAIL_CLICKED", F.coalesce(F.col("EMAIL_CLICKED"), F.lit(0)))
+    .withColumn("EMAIL_UNSUBSCRIBED", F.coalesce(F.col("EMAIL_UNSUBSCRIBED"), F.lit(0)))
+    .drop("E_CLNT_NO", "E_TREATMENT_ID")
+)
 
 # Persist result_df for analysis reuse, release tactic_df
 result_df.persist(StorageLevel.MEMORY_AND_DISK)
@@ -716,28 +812,6 @@ action_seq = action_df.withColumn("contact_seq", F.row_number().over(w_seq))
 print("=" * 60)
 print("DIMINISHING RETURNS -- SUCCESS BY CONTACT SEQUENCE")
 print("=" * 60)
-
-seq_overall = (
-    action_seq
-    .filter(F.col("contact_seq") <= 10)
-    .groupBy("contact_seq")
-    .agg(
-        F.count("*").alias("deployments"),
-        F.sum("SUCCESS").alias("successes"),
-    )
-    .withColumn("success_rate", F.col("successes") / F.col("deployments") * 100)
-    .orderBy("contact_seq")
-    .collect()
-)
-
-print(f"\nOverall (all campaigns):")
-print(f"{'Contact #':<10} {'Deployments':>12} {'Successes':>10} {'Success Rate':>13} {'vs #1':>8}")
-print("-" * 55)
-first_rate = float(seq_overall[0].success_rate) if seq_overall else 0
-for row in seq_overall:
-    rate = float(row.success_rate)
-    vs_first = ((rate - first_rate) / first_rate * 100) if first_rate > 0 else 0
-    print(f"{int(row.contact_seq):<10} {int(row.deployments):>12,} {int(row.successes):>10,} {rate:>12.2f}% {vs_first:>+7.1f}%")
 
 for mne in sorted(CAMPAIGNS.keys()):
     seq_campaign = (
@@ -1133,30 +1207,118 @@ for (mne, rpt) in sorted(rpt_data.keys()):
 
 
 # ============================================================
-# CELL 10: EXPORT
-# Re-runnable. Converts summary to pandas for CSV download.
+# CELL 10: VINTAGE CURVE CONSTRUCTION
+# Builds day-by-day cumulative success curves per campaign x cohort x test group.
+# Output schema matches Vintage/Vvd pipeline:
+#   MNE | COHORT | TST_GRP_CD | RPT_GRP_CD | METRIC | DAY | WINDOW_DAYS | CLIENT_CNT | SUCCESS_CNT | RATE
 # ============================================================
 
 import pandas as pd
 
-perf_summary = (
-    result_df
-    .groupBy("MNE", "TST_GRP_CD", "COHORT")
+# Map each metric to its FIRST_*_DT column in result_df
+METRIC_TO_DATE_COL = {
+    metric: f"FIRST_{col}_DT"
+    for metric, col in METRIC_TO_COLUMN.items()
+}
+# Email engagement metrics use their own date columns
+METRIC_TO_DATE_COL["email_open"] = "EMAIL_OPENED_DT"
+METRIC_TO_DATE_COL["email_click"] = "EMAIL_CLICKED_DT"
+
+# Determine which metrics apply to each campaign
+# PRIMARY always applies; SECONDARY if configured; EMAIL_OPEN/EMAIL_CLICK if campaign has email clients
+campaign_metrics = {}
+for mne, cfg in CAMPAIGNS.items():
+    metrics = [cfg["primary_metric"]]
+    if "secondary_metric" in cfg:
+        metrics.append(cfg["secondary_metric"])
+    campaign_metrics[mne] = metrics
+
+# Check which campaigns have email-channel deployments
+email_mnes = [
+    str(r.MNE) for r in
+    result_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
+    .select("MNE").distinct().collect()
+]
+for mne in email_mnes:
+    campaign_metrics[mne].extend(["email_open", "email_click"])
+
+# Build one long DataFrame: one row per (deployment, metric) with days_to_success computed
+# Then explode day range 0..WINDOW_DAYS and aggregate
+curve_parts = []
+
+for mne, metrics in campaign_metrics.items():
+    mne_df = result_df.filter(F.col("MNE") == mne)
+    for metric in metrics:
+        date_col = METRIC_TO_DATE_COL[metric]
+
+        metric_curve = (
+            mne_df
+            .withColumn("METRIC", F.lit(metric))
+            .withColumn("DAYS_TO_SUCCESS",
+                F.when(F.col(date_col).isNotNull(),
+                       F.datediff(F.col(date_col), F.col("TREATMT_STRT_DT")))
+            )
+        )
+        curve_parts.append(
+            metric_curve.select(
+                "MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD",
+                "METRIC", "WINDOW_DAYS", "DAYS_TO_SUCCESS"
+            )
+        )
+
+# Union all campaign x metric combinations
+all_curves = curve_parts[0]
+for part in curve_parts[1:]:
+    all_curves = all_curves.unionByName(part)
+
+# Compute CLIENT_CNT and median WINDOW_DAYS per group
+group_cols = ["MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC"]
+group_stats = (
+    all_curves
+    .groupBy(*group_cols)
     .agg(
-        F.count("*").alias("deployments"),
-        F.countDistinct("CLNT_NO").alias("clients"),
-        F.sum("SUCCESS").alias("successes"),
-        (F.sum("SUCCESS") / F.count("*") * 100).alias("success_rate"),
+        F.count("*").alias("CLIENT_CNT"),
+        F.expr("percentile_approx(WINDOW_DAYS, 0.5)").alias("WINDOW_DAYS"),
     )
-    .orderBy("MNE", "COHORT", "TST_GRP_CD")
-    .toPandas()
 )
 
-print("Campaign performance summary (first 20 rows):")
-print(perf_summary.head(20).to_string(index=False))
+# Generate day range 0..WINDOW_DAYS per group, then count successes at each day
+# explode(sequence(0, WINDOW_DAYS)) produces one row per day value
+day_range = (
+    group_stats
+    .withColumn("DAY", F.explode(F.sequence(F.lit(0), F.col("WINDOW_DAYS"))))
+)
 
+# Compute per-group success counts at each day threshold
+# A client counts as success at DAY d if DAYS_TO_SUCCESS <= d
+success_at_day = (
+    all_curves
+    .groupBy(*group_cols, "DAYS_TO_SUCCESS")
+    .agg(F.count("*").alias("cnt"))
+    .filter(F.col("DAYS_TO_SUCCESS").isNotNull())
+)
+
+# Cross join day range with success counts, then sum where DAYS_TO_SUCCESS <= DAY
+vintage_curves = (
+    day_range
+    .join(success_at_day, on=group_cols, how="left")
+    .filter(
+        F.col("DAYS_TO_SUCCESS").isNull() |
+        (F.col("DAYS_TO_SUCCESS") <= F.col("DAY"))
+    )
+    .groupBy(*group_cols, "DAY", "WINDOW_DAYS", "CLIENT_CNT")
+    .agg(F.coalesce(F.sum("cnt"), F.lit(0)).alias("SUCCESS_CNT"))
+    .withColumn("RATE", F.col("SUCCESS_CNT") / F.col("CLIENT_CNT") * 100)
+    .select("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC",
+            "DAY", "WINDOW_DAYS", "CLIENT_CNT", "SUCCESS_CNT", "RATE")
+    .orderBy("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC", "DAY")
+)
+
+vintage_curves_pd = vintage_curves.toPandas()
+print(f"Vintage curves: {len(vintage_curves_pd):,} rows")
+print(vintage_curves_pd.head(20).to_string(index=False))
 # Uncomment to save:
-# perf_summary.to_csv("/tmp/vvd_v2_performance_summary.csv", index=False)
+# vintage_curves_pd.to_csv("/tmp/vvd_v2_vintage_curves.csv", index=False)
 
 
 # ============================================================
