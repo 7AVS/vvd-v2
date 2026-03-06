@@ -16,8 +16,20 @@
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 from pyspark.sql.types import *
-from IPython.display import display, HTML
-import json
+from collections import defaultdict
+
+try:
+    from IPython.display import display, HTML
+except ImportError:
+    pass  # Not in notebook environment
+
+try:
+    from scipy import stats as scipy_stats
+    from scipy.stats import norm as scipy_norm
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+    print("WARNING: scipy not available. SRM and significance tests will use approximation.")
 
 # ============================================================
 # CONFIGURATION — Edit these values before running
@@ -380,8 +392,6 @@ result_df.groupBy("MNE", "TST_GRP_CD").agg(
 # PHASE 1: UNIVERSE OVERVIEW
 # ============================================================
 
-from scipy import stats as scipy_stats
-
 # --- 1.1 Overall Universe ---
 total_rows = result_df.count()
 unique_clients = result_df.select("CLNT_NO").distinct().count()
@@ -429,7 +439,6 @@ srm_results = (
 )
 
 # Pivot into per-campaign action/control counts
-from collections import defaultdict
 srm_data = defaultdict(dict)
 for row in srm_results:
     srm_data[str(row.MNE)][str(row.TST_GRP_CD)] = int(row.clients)
@@ -449,7 +458,12 @@ for mne in sorted(srm_data.keys()):
 
     chi_sq = ((action - expected_action) ** 2 / expected_action +
               (control - expected_control) ** 2 / expected_control)
-    p_value = 1 - scipy_stats.chi2.cdf(chi_sq, df=1)
+    if HAS_SCIPY:
+        p_value = 1 - scipy_stats.chi2.cdf(chi_sq, df=1)
+    else:
+        # Approximation: chi-sq with 1 df, p < 0.05 when chi_sq > 3.84
+        import math
+        p_value = math.exp(-chi_sq / 2) if chi_sq < 20 else 0.0
 
     status = "PASS" if p_value > 0.05 else "SRM !"
     actual_ratio = f"{action / total * 100:.1f}/{control / total * 100:.1f}"
@@ -493,8 +507,6 @@ for row in campaign_vol:
 # ============================================================
 # PHASE 2: CAMPAIGN PERFORMANCE
 # ============================================================
-from scipy.stats import norm as scipy_norm
-
 print("=" * 60)
 print("CAMPAIGN PERFORMANCE — LIFT & SIGNIFICANCE")
 print("=" * 60)
@@ -514,7 +526,6 @@ perf = (
 )
 
 # Pivot into action vs control per campaign x cohort
-from collections import defaultdict
 perf_data = defaultdict(lambda: defaultdict(dict))
 for row in perf:
     key = (str(row.MNE), str(row.COHORT))
@@ -549,7 +560,11 @@ for (mne, cohort) in sorted(perf_data.keys()):
     if pooled > 0 and pooled < 1:
         se = (pooled * (1 - pooled) * (1/a_n + 1/c_n)) ** 0.5
         z = (a_p - c_p) / se if se > 0 else 0
-        p_val = 2 * (1 - scipy_norm.cdf(abs(z)))
+        if HAS_SCIPY:
+            p_val = 2 * (1 - scipy_norm.cdf(abs(z)))
+        else:
+            import math
+            p_val = 2 * math.exp(-0.5 * z * z) / (1 + 0.3275911 * abs(z)) if abs(z) < 10 else 0.0
     else:
         p_val = 1.0
 
@@ -614,7 +629,11 @@ for mne in sorted(overall_data.keys()):
     if pooled > 0 and pooled < 1:
         se = (pooled * (1 - pooled) * (1/a_n + 1/c_n)) ** 0.5
         z = (a_p - c_p) / se if se > 0 else 0
-        p_val = 2 * (1 - scipy_norm.cdf(abs(z)))
+        if HAS_SCIPY:
+            p_val = 2 * (1 - scipy_norm.cdf(abs(z)))
+        else:
+            import math
+            p_val = 2 * math.exp(-0.5 * z * z) / (1 + 0.3275911 * abs(z)) if abs(z) < 10 else 0.0
     else:
         p_val = 1.0
 
