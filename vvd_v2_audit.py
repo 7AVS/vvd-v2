@@ -261,7 +261,7 @@ if "card_acquisition" in AUDIT_METRICS or "card_activation" in AUDIT_METRICS:
         raw_card_filtered = (
             card_base
             .select(
-                "CLNT_NO", "CRD_NO", "STS_CD", "SRVC_ID",
+                "CLNT_NO", "CLNT_CRD_NO", "STS_CD", "SRVC_ID",
                 F.col("ISS_DT").cast("date").alias("ISS_DT"),
                 F.col("ACTV_DT").cast("date").alias("ACTV_DT"),
                 F.col("CAPTR_DT").cast("date").alias("CAPTR_DT")
@@ -1353,7 +1353,7 @@ print("-" * 60)
 if raw_card_filtered is not None:
     raw_card_filtered.filter(
         F.col("CLNT_NO").isin(trace_clients)
-    ).select("CLNT_NO", "CRD_NO").distinct().show(20, truncate=False)
+    ).select("CLNT_NO", "CLNT_CRD_NO").distinct().show(20, truncate=False)
 else:
     print("Card data not available.")
 
