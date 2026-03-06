@@ -263,8 +263,7 @@ if "card_acquisition" in AUDIT_METRICS or "card_activation" in AUDIT_METRICS:
             .select(
                 "CLNT_NO", "CLNT_CRD_NO", "STS_CD", "SRVC_ID",
                 F.col("ISS_DT").cast("date").alias("ISS_DT"),
-                F.col("ACTV_DT").cast("date").alias("ACTV_DT"),
-                F.col("CAPTR_DT").cast("date").alias("CAPTR_DT")
+                F.col("ACTV_DT").cast("date").alias("ACTV_DT")
             )
         )
         raw_card_filtered.persist(StorageLevel.MEMORY_AND_DISK)
