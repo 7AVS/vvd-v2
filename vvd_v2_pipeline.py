@@ -1214,6 +1214,23 @@ for (mne, rpt) in sorted(rpt_data.keys()):
 # ============================================================
 
 import pandas as pd
+import base64
+
+def download_csv(data, filename="results.csv"):
+    """Create a clickable download link for a DataFrame in Jupyter."""
+    csv_data = data.to_csv(index=False)
+    size_mb = len(csv_data.encode('utf-8')) / (1024 * 1024)
+    if size_mb > 50:
+        print(f"Data too large ({size_mb:.1f} MB). Filter before exporting.")
+        return
+    b64 = base64.b64encode(csv_data.encode()).decode()
+    link = (
+        f'<a download="{filename}" href="data:text/csv;base64,{b64}" '
+        f'style="padding:6px 12px; background:#2196F3; color:white; '
+        f'text-decoration:none; border-radius:3px; margin:2px; display:inline-block;">'
+        f'Download {filename}</a>'
+    )
+    display(HTML(f'<div style="margin:5px 0;">{link} <span style="color:#666;">({size_mb:.2f} MB)</span></div>'))
 
 # Map each metric to its FIRST_*_DT column in result_df
 METRIC_TO_DATE_COL = {
@@ -1317,8 +1334,9 @@ vintage_curves = (
 vintage_curves_pd = vintage_curves.toPandas()
 print(f"Vintage curves: {len(vintage_curves_pd):,} rows")
 print(vintage_curves_pd.head(20).to_string(index=False))
-# Uncomment to save:
-# vintage_curves_pd.to_csv("/tmp/vvd_v2_vintage_curves.csv", index=False)
+
+# Clickable download link — same as Vintage/Vvd pipeline
+download_csv(vintage_curves_pd, "vvd_v2_vintage_curves.csv")
 
 
 # ============================================================
