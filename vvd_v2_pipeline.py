@@ -922,10 +922,10 @@ def run_data_pipeline(spark):
     # high-volume sources like POS transactions (card_usage).
     # Semi-join: keeps only rows where CLNT_NO exists in experiment, no column duplication.
     experiment_clients = tactic_df.select("CLNT_NO").distinct()
-    card_acquisition_df = card_acquisition_df.join(experiment_clients, "CLNT_NO", "semi")
-    card_activation_df = card_activation_df.join(experiment_clients, "CLNT_NO", "semi")
-    card_usage_df = card_usage_df.join(experiment_clients, "CLNT_NO", "semi")
-    wallet_provisioning_df = wallet_provisioning_df.join(experiment_clients, "CLNT_NO", "semi")
+    card_acquisition_df = card_acquisition_df.join(experiment_clients, "CLNT_NO", "left_semi")
+    card_activation_df = card_activation_df.join(experiment_clients, "CLNT_NO", "left_semi")
+    card_usage_df = card_usage_df.join(experiment_clients, "CLNT_NO", "left_semi")
+    wallet_provisioning_df = wallet_provisioning_df.join(experiment_clients, "CLNT_NO", "left_semi")
     print(f"\nPre-filtered success DFs to {experiment_clients.count():,} experiment clients")
 
     success_dfs = {
