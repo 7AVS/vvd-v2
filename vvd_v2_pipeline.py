@@ -381,13 +381,8 @@ print("Re-run cells 5-9 below as many times as needed.")
 # Skip this cell if EDW is slow or email data not needed yet.
 # ============================================================
 
-print("Loading email engagement from EDW...")
-email_tactic_ids = [
-    str(r.TACTIC_ID) for r in
-    result_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
-    .select("TACTIC_ID").distinct().collect()
-]
-print(f"Found {len(email_tactic_ids):,} email tactic IDs")
+# Loop per MNE (mirrors Vintage/Vvd — small IN clauses, fast on Teradata)
+print("Loading email engagement from EDW (per-campaign)...")
 
 EMAIL_SCHEMA = (
     "CLNT_NO STRING, TREATMENT_ID STRING, "
@@ -395,8 +390,25 @@ EMAIL_SCHEMA = (
     "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
 )
 
-if email_tactic_ids:
-    tactic_id_list = "','".join(email_tactic_ids)
+email_mnes = [
+    str(r.MNE) for r in
+    result_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
+    .select("MNE").distinct().collect()
+]
+
+email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
+
+for mne in sorted(email_mnes):
+    mne_tactic_ids = [
+        str(r.TACTIC_ID) for r in
+        result_df.filter(
+            (F.col("MNE") == mne) & F.col("TACTIC_CELL_CD").contains("EM")
+        ).select("TACTIC_ID").distinct().collect()
+    ]
+    if not mne_tactic_ids:
+        continue
+
+    tactic_id_list = "','".join(mne_tactic_ids)
     email_query = f"""
 SELECT
     CAST(FEEDBACK_MASTER.CLNT_NO AS VARCHAR(20)) AS CLNT_NO,
@@ -417,12 +429,12 @@ WHERE FEEDBACK_MASTER.TREATMENT_ID IN ('{tactic_id_list}')
 GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
 """
     try:
-        print("Executing EDW query (this may take a while)...")
+        print(f"  {mne}: querying {len(mne_tactic_ids)} tactic IDs...", end=" ")
         cursor = EDW.cursor()
         cursor.execute(email_query)
         email_results = cursor.fetchall()
         cursor.close()
-        email_engagement_df = spark.createDataFrame(
+        mne_df = spark.createDataFrame(
             [
                 (str(r[0]).strip().lstrip('0'), str(r[1]),
                  int(r[2]), int(r[3]), int(r[4]), int(r[5]),
@@ -431,16 +443,15 @@ GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
             ],
             EMAIL_SCHEMA
         )
-        print(f"M3d: email_engagement: {email_engagement_df.count():,} rows")
+        print(f"{mne_df.count():,} rows")
+        email_engagement_df = email_engagement_df.unionByName(mne_df)
     except NameError:
-        print("WARNING: EDW cursor not available. email_engagement will be empty.")
-        email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
+        print("EDW cursor not available, skipping.")
+        break
     except Exception as e:
-        print(f"WARNING: email_engagement extraction failed: {e}")
-        email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
-else:
-    print("M3d: No email tactic IDs found. email_engagement will be empty.")
-    email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
+        print(f"failed: {e}")
+
+print(f"Email engagement total: {email_engagement_df.count():,} rows")
 
 # Join email to persisted result_df, re-persist with email columns
 email_renamed = (
