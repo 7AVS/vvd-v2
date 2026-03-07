@@ -1252,8 +1252,10 @@ METRIC_TO_DATE_COL = {
     for metric, col in METRIC_TO_COLUMN.items()
 }
 # Email engagement metrics use their own date columns
+METRIC_TO_DATE_COL["email_sent"] = "EMAIL_SENT_DT"
 METRIC_TO_DATE_COL["email_open"] = "EMAIL_OPENED_DT"
 METRIC_TO_DATE_COL["email_click"] = "EMAIL_CLICKED_DT"
+METRIC_TO_DATE_COL["email_unsub"] = "EMAIL_UNSUBSCRIBED_DT"
 
 # Determine which metrics apply to each campaign
 # PRIMARY always applies; SECONDARY if configured; EMAIL_OPEN/EMAIL_CLICK if campaign has email clients
@@ -1271,7 +1273,7 @@ email_mnes = [
     .select("MNE").distinct().collect()
 ]
 for mne in email_mnes:
-    campaign_metrics[mne].extend(["email_open", "email_click"])
+    campaign_metrics[mne].extend(["email_sent", "email_open", "email_click", "email_unsub"])
 
 # Build one long DataFrame: one row per (deployment, metric) with days_to_success computed
 # Then explode day range 0..WINDOW_DAYS and aggregate
