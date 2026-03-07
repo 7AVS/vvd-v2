@@ -381,16 +381,14 @@ print("Re-run cells 5-9 below as many times as needed.")
 # Skip this cell if EDW is slow or email data not needed yet.
 # ============================================================
 
-# RPT_GRP_CDs with email channel (from distinct MNE/RPT_GRP_CD/TACTIC_CELL_CD)
-# VCN and VAW have no email. Control (TG7) is always XX.
-EMAIL_RPT_GRPS = [
-    "PVDAAG03",              # VDA  EM_IM
-    "PVDTAG01", "PVDTAG03",  # VDT  EM
-    "PVDTAG11", "PVDTAG13",  # VDT  EM
-    "PVUIAG01", "PVUIAG02",  # VUI  EM_IM, EM
-    "PVUTAG01", "PVUTAG02",  # VUT  EM
-]
-
+# Derive email RPT_GRP_CDs dynamically — contains("EM") on ~30 distinct rows, not 38M
+channel_map = (
+    result_df.select("RPT_GRP_CD", "TACTIC_CELL_CD").distinct()
+    .filter(F.col("TACTIC_CELL_CD").contains("EM"))
+    .select("RPT_GRP_CD").distinct().collect()
+)
+EMAIL_RPT_GRPS = sorted([str(r.RPT_GRP_CD) for r in channel_map])
+print(f"Email RPT_GRP_CDs: {EMAIL_RPT_GRPS}")
 print("Loading email engagement from EDW (per-RPT_GRP)...")
 
 EMAIL_SCHEMA = (
