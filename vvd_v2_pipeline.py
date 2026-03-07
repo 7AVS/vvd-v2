@@ -398,6 +398,8 @@ email_mnes = [
 
 email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
 
+CHUNK_SIZE = 50  # Teradata spools out on large IN clauses
+
 for mne in sorted(email_mnes):
     mne_tactic_ids = [
         str(r.TACTIC_ID) for r in
@@ -408,8 +410,13 @@ for mne in sorted(email_mnes):
     if not mne_tactic_ids:
         continue
 
-    tactic_id_list = "','".join(mne_tactic_ids)
-    email_query = f"""
+    chunks = [mne_tactic_ids[i:i + CHUNK_SIZE] for i in range(0, len(mne_tactic_ids), CHUNK_SIZE)]
+    mne_total = 0
+    print(f"  {mne}: {len(mne_tactic_ids)} tactic IDs ({len(chunks)} batch{'es' if len(chunks) > 1 else ''})...", end=" ")
+
+    for chunk in chunks:
+        tactic_id_list = "','".join(chunk)
+        email_query = f"""
 SELECT
     CAST(FEEDBACK_MASTER.CLNT_NO AS VARCHAR(20)) AS CLNT_NO,
     FEEDBACK_MASTER.TREATMENT_ID,
@@ -428,28 +435,30 @@ INNER JOIN DTZV01.VENDOR_FEEDBACK_EVENT FEEDBACK_EVENT
 WHERE FEEDBACK_MASTER.TREATMENT_ID IN ('{tactic_id_list}')
 GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
 """
-    try:
-        print(f"  {mne}: querying {len(mne_tactic_ids)} tactic IDs...", end=" ")
-        cursor = EDW.cursor()
-        cursor.execute(email_query)
-        email_results = cursor.fetchall()
-        cursor.close()
-        mne_df = spark.createDataFrame(
-            [
-                (str(r[0]).strip().lstrip('0'), str(r[1]),
-                 int(r[2]), int(r[3]), int(r[4]), int(r[5]),
-                 r[6], r[7], r[8], r[9])
-                for r in email_results
-            ],
-            EMAIL_SCHEMA
-        )
-        print(f"{mne_df.count():,} rows")
-        email_engagement_df = email_engagement_df.unionByName(mne_df)
-    except NameError:
-        print("EDW cursor not available, skipping.")
-        break
-    except Exception as e:
-        print(f"failed: {e}")
+        try:
+            cursor = EDW.cursor()
+            cursor.execute(email_query)
+            email_results = cursor.fetchall()
+            cursor.close()
+            if email_results:
+                chunk_df = spark.createDataFrame(
+                    [
+                        (str(r[0]).strip().lstrip('0'), str(r[1]),
+                         int(r[2]), int(r[3]), int(r[4]), int(r[5]),
+                         r[6], r[7], r[8], r[9])
+                        for r in email_results
+                    ],
+                    EMAIL_SCHEMA
+                )
+                mne_total += chunk_df.count()
+                email_engagement_df = email_engagement_df.unionByName(chunk_df)
+        except NameError:
+            print("EDW cursor not available, skipping.")
+            break
+        except Exception as e:
+            print(f"batch failed: {e}")
+
+    print(f"{mne_total:,} rows")
 
 print(f"Email engagement total: {email_engagement_df.count():,} rows")
 
