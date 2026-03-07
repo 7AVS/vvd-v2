@@ -381,8 +381,17 @@ print("Re-run cells 5-9 below as many times as needed.")
 # Skip this cell if EDW is slow or email data not needed yet.
 # ============================================================
 
-# Loop per MNE (mirrors Vintage/Vvd — small IN clauses, fast on Teradata)
-print("Loading email engagement from EDW (per-campaign)...")
+# RPT_GRP_CDs with email channel (from distinct MNE/RPT_GRP_CD/TACTIC_CELL_CD)
+# VCN and VAW have no email. Control (TG7) is always XX.
+EMAIL_RPT_GRPS = [
+    "PVDAAG03",              # VDA  EM_IM
+    "PVDTAG01", "PVDTAG03",  # VDT  EM
+    "PVDTAG11", "PVDTAG13",  # VDT  EM
+    "PVUIAG01", "PVUIAG02",  # VUI  EM_IM, EM
+    "PVUTAG01", "PVUTAG02",  # VUT  EM
+]
+
+print("Loading email engagement from EDW (per-RPT_GRP)...")
 
 EMAIL_SCHEMA = (
     "CLNT_NO STRING, TREATMENT_ID STRING, "
@@ -390,33 +399,19 @@ EMAIL_SCHEMA = (
     "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
 )
 
-email_mnes = [
-    str(r.MNE) for r in
-    result_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
-    .select("MNE").distinct().collect()
-]
-
 email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
 
-CHUNK_SIZE = 50  # Teradata spools out on large IN clauses
-
-for mne in sorted(email_mnes):
-    mne_tactic_ids = [
+for rpt_grp in EMAIL_RPT_GRPS:
+    tactic_ids = [
         str(r.TACTIC_ID) for r in
-        result_df.filter(
-            (F.col("MNE") == mne) & F.col("TACTIC_CELL_CD").contains("EM")
-        ).select("TACTIC_ID").distinct().collect()
+        result_df.filter(F.col("RPT_GRP_CD") == rpt_grp)
+        .select("TACTIC_ID").distinct().collect()
     ]
-    if not mne_tactic_ids:
+    if not tactic_ids:
         continue
 
-    chunks = [mne_tactic_ids[i:i + CHUNK_SIZE] for i in range(0, len(mne_tactic_ids), CHUNK_SIZE)]
-    mne_total = 0
-    print(f"  {mne}: {len(mne_tactic_ids)} tactic IDs ({len(chunks)} batch{'es' if len(chunks) > 1 else ''})...", end=" ")
-
-    for chunk in chunks:
-        tactic_id_list = "','".join(chunk)
-        email_query = f"""
+    tactic_id_list = "','".join(tactic_ids)
+    email_query = f"""
 SELECT
     CAST(FEEDBACK_MASTER.CLNT_NO AS VARCHAR(20)) AS CLNT_NO,
     FEEDBACK_MASTER.TREATMENT_ID,
@@ -435,30 +430,31 @@ INNER JOIN DTZV01.VENDOR_FEEDBACK_EVENT FEEDBACK_EVENT
 WHERE FEEDBACK_MASTER.TREATMENT_ID IN ('{tactic_id_list}')
 GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
 """
-        try:
-            cursor = EDW.cursor()
-            cursor.execute(email_query)
-            email_results = cursor.fetchall()
-            cursor.close()
-            if email_results:
-                chunk_df = spark.createDataFrame(
-                    [
-                        (str(r[0]).strip().lstrip('0'), str(r[1]),
-                         int(r[2]), int(r[3]), int(r[4]), int(r[5]),
-                         r[6], r[7], r[8], r[9])
-                        for r in email_results
-                    ],
-                    EMAIL_SCHEMA
-                )
-                mne_total += chunk_df.count()
-                email_engagement_df = email_engagement_df.unionByName(chunk_df)
-        except NameError:
-            print("EDW cursor not available, skipping.")
-            break
-        except Exception as e:
-            print(f"batch failed: {e}")
-
-    print(f"{mne_total:,} rows")
+    try:
+        print(f"  {rpt_grp}: {len(tactic_ids)} tactic IDs...", end=" ")
+        cursor = EDW.cursor()
+        cursor.execute(email_query)
+        email_results = cursor.fetchall()
+        cursor.close()
+        if email_results:
+            grp_df = spark.createDataFrame(
+                [
+                    (str(r[0]).strip().lstrip('0'), str(r[1]),
+                     int(r[2]), int(r[3]), int(r[4]), int(r[5]),
+                     r[6], r[7], r[8], r[9])
+                    for r in email_results
+                ],
+                EMAIL_SCHEMA
+            )
+            print(f"{grp_df.count():,} rows")
+            email_engagement_df = email_engagement_df.unionByName(grp_df)
+        else:
+            print("0 rows")
+    except NameError:
+        print("EDW cursor not available, skipping.")
+        break
+    except Exception as e:
+        print(f"failed: {e}")
 
 print(f"Email engagement total: {email_engagement_df.count():,} rows")
 
