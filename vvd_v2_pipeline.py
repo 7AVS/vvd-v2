@@ -14,6 +14,7 @@
 #
 # Structure: Each section below is one notebook cell.
 # Cells 1-4: Data pipeline (run once per session)
+# Cell 4b: Email engagement (optional, decoupled from critical path)
 # Cells 5-9: Analysis (re-run as many times as you want)
 # Cell 10: Vintage curve construction
 # Cell 11: Cleanup
@@ -282,79 +283,6 @@ except Exception as e:
     print(f"WARNING: wallet_provisioning extraction failed: {e}")
     wallet_provisioning_df = spark.createDataFrame([], "CLNT_NO STRING, SUCCESS_DT DATE")
 
-# --- M3d: Email engagement ---
-# Loads send/open/click/unsub events from EDW feedback tables for email-channel deployments.
-# Keyed on TREATMENT_ID (= TACTIC_ID in tactic_df) so we can join at the deployment level in M6.
-email_tactic_ids = [
-    str(r.TACTIC_ID) for r in
-    tactic_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
-    .select("TACTIC_ID").distinct().collect()
-]
-
-if email_tactic_ids:
-    tactic_id_list = "','".join(email_tactic_ids)
-    email_query = f"""
-SELECT
-    CAST(FEEDBACK_MASTER.CLNT_NO AS VARCHAR(20)) AS CLNT_NO,
-    FEEDBACK_MASTER.TREATMENT_ID,
-    MAX(CASE WHEN disposition_cd = 1 THEN 1 ELSE 0 END) AS EMAIL_SENT,
-    MAX(CASE WHEN disposition_cd = 2 THEN 1 ELSE 0 END) AS EMAIL_OPENED,
-    MAX(CASE WHEN disposition_cd = 3 THEN 1 ELSE 0 END) AS EMAIL_CLICKED,
-    MAX(CASE WHEN disposition_cd = 4 THEN 1 ELSE 0 END) AS EMAIL_UNSUBSCRIBED,
-    MAX(CASE WHEN disposition_cd = 1 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_SENT_DT,
-    MAX(CASE WHEN disposition_cd = 2 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_OPENED_DT,
-    MAX(CASE WHEN disposition_cd = 3 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_CLICKED_DT,
-    MAX(CASE WHEN disposition_cd = 4 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_UNSUBSCRIBED_DT
-FROM DTZV01.VENDOR_FEEDBACK_MASTER FEEDBACK_MASTER
-INNER JOIN DTZV01.VENDOR_FEEDBACK_EVENT FEEDBACK_EVENT
-    ON FEEDBACK_MASTER.consumer_id_hashed = FEEDBACK_EVENT.consumer_id_hashed
-    AND FEEDBACK_MASTER.TREATMENT_ID = FEEDBACK_EVENT.TREATMENT_ID
-WHERE FEEDBACK_MASTER.TREATMENT_ID IN ('{tactic_id_list}')
-GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
-"""
-    try:
-        cursor = EDW.cursor()
-        cursor.execute(email_query)
-        email_results = cursor.fetchall()
-        cursor.close()
-        # CLNT_NO is VARCHAR from Teradata — strip whitespace and leading zeros like wallet
-        email_engagement_df = spark.createDataFrame(
-            [
-                (str(r[0]).strip().lstrip('0'), str(r[1]),
-                 int(r[2]), int(r[3]), int(r[4]), int(r[5]),
-                 r[6], r[7], r[8], r[9])
-                for r in email_results
-            ],
-            "CLNT_NO STRING, TREATMENT_ID STRING, "
-            "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
-            "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
-        )
-        print(f"M3d: email_engagement: {email_engagement_df.count():,} rows")
-    except NameError:
-        print("WARNING: EDW cursor not available. email_engagement will be empty.")
-        email_engagement_df = spark.createDataFrame(
-            [],
-            "CLNT_NO STRING, TREATMENT_ID STRING, "
-            "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
-            "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
-        )
-    except Exception as e:
-        print(f"WARNING: email_engagement extraction failed: {e}")
-        email_engagement_df = spark.createDataFrame(
-            [],
-            "CLNT_NO STRING, TREATMENT_ID STRING, "
-            "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
-            "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
-        )
-else:
-    print("M3d: No email tactic IDs found. email_engagement will be empty.")
-    email_engagement_df = spark.createDataFrame(
-        [],
-        "CLNT_NO STRING, TREATMENT_ID STRING, "
-        "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
-        "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
-    )
-
 # --- Pre-filter success DFs to experiment participants only ---
 # Eliminates non-experiment rows BEFORE the M6 shuffle.
 # Critical for POS transactions (card_usage) — tens of millions of rows down to ~2-3M.
@@ -428,29 +356,6 @@ for mne, cfg in CAMPAIGNS.items():
     success_expr = F.when(F.col("MNE") == mne, F.col(col_name)).otherwise(success_expr)
 result_df = result_df.withColumn("SUCCESS", success_expr)
 
-# Join email engagement at the deployment level (CLNT_NO + TACTIC_ID == TREATMENT_ID).
-# Non-email deployments get 0 for binary columns, NULL for date columns.
-email_renamed = (
-    email_engagement_df
-    .withColumnRenamed("CLNT_NO", "E_CLNT_NO")
-    .withColumnRenamed("TREATMENT_ID", "E_TREATMENT_ID")
-)
-
-result_df = (
-    result_df
-    .join(
-        email_renamed,
-        (F.col("CLNT_NO") == F.col("E_CLNT_NO")) &
-        (F.col("TACTIC_ID") == F.col("E_TREATMENT_ID")),
-        "left"
-    )
-    .withColumn("EMAIL_SENT", F.coalesce(F.col("EMAIL_SENT"), F.lit(0)))
-    .withColumn("EMAIL_OPENED", F.coalesce(F.col("EMAIL_OPENED"), F.lit(0)))
-    .withColumn("EMAIL_CLICKED", F.coalesce(F.col("EMAIL_CLICKED"), F.lit(0)))
-    .withColumn("EMAIL_UNSUBSCRIBED", F.coalesce(F.col("EMAIL_UNSUBSCRIBED"), F.lit(0)))
-    .drop("E_CLNT_NO", "E_TREATMENT_ID")
-)
-
 # Persist result_df for analysis reuse, release tactic_df
 result_df.persist(StorageLevel.MEMORY_AND_DISK)
 result_count = result_df.count()  # Force materialization
@@ -467,6 +372,101 @@ result_df.groupBy("MNE", "TST_GRP_CD").agg(
 
 print("Data pipeline complete. result_df is persisted.")
 print("Re-run cells 5-9 below as many times as needed.")
+
+
+# ============================================================
+# CELL 4b: EMAIL ENGAGEMENT (OPTIONAL)
+# Decoupled from critical path — runs AFTER result_df is persisted.
+# Loads send/open/click/unsub from EDW feedback tables, joins to result_df.
+# Skip this cell if EDW is slow or email data not needed yet.
+# ============================================================
+
+print("Loading email engagement from EDW...")
+email_tactic_ids = [
+    str(r.TACTIC_ID) for r in
+    result_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
+    .select("TACTIC_ID").distinct().collect()
+]
+print(f"Found {len(email_tactic_ids):,} email tactic IDs")
+
+EMAIL_SCHEMA = (
+    "CLNT_NO STRING, TREATMENT_ID STRING, "
+    "EMAIL_SENT INT, EMAIL_OPENED INT, EMAIL_CLICKED INT, EMAIL_UNSUBSCRIBED INT, "
+    "EMAIL_SENT_DT DATE, EMAIL_OPENED_DT DATE, EMAIL_CLICKED_DT DATE, EMAIL_UNSUBSCRIBED_DT DATE"
+)
+
+if email_tactic_ids:
+    tactic_id_list = "','".join(email_tactic_ids)
+    email_query = f"""
+SELECT
+    CAST(FEEDBACK_MASTER.CLNT_NO AS VARCHAR(20)) AS CLNT_NO,
+    FEEDBACK_MASTER.TREATMENT_ID,
+    MAX(CASE WHEN disposition_cd = 1 THEN 1 ELSE 0 END) AS EMAIL_SENT,
+    MAX(CASE WHEN disposition_cd = 2 THEN 1 ELSE 0 END) AS EMAIL_OPENED,
+    MAX(CASE WHEN disposition_cd = 3 THEN 1 ELSE 0 END) AS EMAIL_CLICKED,
+    MAX(CASE WHEN disposition_cd = 4 THEN 1 ELSE 0 END) AS EMAIL_UNSUBSCRIBED,
+    MAX(CASE WHEN disposition_cd = 1 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_SENT_DT,
+    MAX(CASE WHEN disposition_cd = 2 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_OPENED_DT,
+    MAX(CASE WHEN disposition_cd = 3 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_CLICKED_DT,
+    MAX(CASE WHEN disposition_cd = 4 THEN CAST(disposition_dt_tm AS DATE) END) AS EMAIL_UNSUBSCRIBED_DT
+FROM DTZV01.VENDOR_FEEDBACK_MASTER FEEDBACK_MASTER
+INNER JOIN DTZV01.VENDOR_FEEDBACK_EVENT FEEDBACK_EVENT
+    ON FEEDBACK_MASTER.consumer_id_hashed = FEEDBACK_EVENT.consumer_id_hashed
+    AND FEEDBACK_MASTER.TREATMENT_ID = FEEDBACK_EVENT.TREATMENT_ID
+WHERE FEEDBACK_MASTER.TREATMENT_ID IN ('{tactic_id_list}')
+GROUP BY FEEDBACK_MASTER.CLNT_NO, FEEDBACK_MASTER.TREATMENT_ID
+"""
+    try:
+        print("Executing EDW query (this may take a while)...")
+        cursor = EDW.cursor()
+        cursor.execute(email_query)
+        email_results = cursor.fetchall()
+        cursor.close()
+        email_engagement_df = spark.createDataFrame(
+            [
+                (str(r[0]).strip().lstrip('0'), str(r[1]),
+                 int(r[2]), int(r[3]), int(r[4]), int(r[5]),
+                 r[6], r[7], r[8], r[9])
+                for r in email_results
+            ],
+            EMAIL_SCHEMA
+        )
+        print(f"M3d: email_engagement: {email_engagement_df.count():,} rows")
+    except NameError:
+        print("WARNING: EDW cursor not available. email_engagement will be empty.")
+        email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
+    except Exception as e:
+        print(f"WARNING: email_engagement extraction failed: {e}")
+        email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
+else:
+    print("M3d: No email tactic IDs found. email_engagement will be empty.")
+    email_engagement_df = spark.createDataFrame([], EMAIL_SCHEMA)
+
+# Join email to persisted result_df, re-persist with email columns
+email_renamed = (
+    email_engagement_df
+    .withColumnRenamed("CLNT_NO", "E_CLNT_NO")
+    .withColumnRenamed("TREATMENT_ID", "E_TREATMENT_ID")
+)
+result_df_with_email = (
+    result_df
+    .join(
+        email_renamed,
+        (F.col("CLNT_NO") == F.col("E_CLNT_NO")) &
+        (F.col("TACTIC_ID") == F.col("E_TREATMENT_ID")),
+        "left"
+    )
+    .withColumn("EMAIL_SENT", F.coalesce(F.col("EMAIL_SENT"), F.lit(0)))
+    .withColumn("EMAIL_OPENED", F.coalesce(F.col("EMAIL_OPENED"), F.lit(0)))
+    .withColumn("EMAIL_CLICKED", F.coalesce(F.col("EMAIL_CLICKED"), F.lit(0)))
+    .withColumn("EMAIL_UNSUBSCRIBED", F.coalesce(F.col("EMAIL_UNSUBSCRIBED"), F.lit(0)))
+    .drop("E_CLNT_NO", "E_TREATMENT_ID")
+)
+
+result_df.unpersist()
+result_df = result_df_with_email
+result_df.persist(StorageLevel.MEMORY_AND_DISK)
+print(f"result_df re-persisted with email columns: {result_df.count():,} rows")
 
 
 # ============================================================
