@@ -3,13 +3,14 @@
 #
 # Dependencies: pip install python-pptx
 #
-# Input files (place in ./data/ relative to this script):
-#   - vintage_curves.csv  (REQUIRED) — cohort-level vintage curve data from pipeline Cell 10
+# Input files:
+#   - vintage_curves.csv (REQUIRED) — from pipeline Cell 10
 #     Columns: MNE, COHORT, TST_GRP_CD, RPT_GRP_CD, METRIC, DAY, WINDOW_DAYS, CLIENT_CNT, SUCCESS_CNT, RATE
-#   - campaign_summary.csv (REQUIRED) — portfolio summary stats from pipeline Cell 9
-#     Columns: MNE, TST_GRP_CD, total_clients, success_count, success_rate, lift, p_value, ci_lower, ci_upper
+#   - mega_output.csv (REQUIRED) — from pipeline Cell 5.5
+#     Uses ALL/ALL rollup rows for campaign-level lift and p_value
+#     Key columns: MNE, COHORT, RPT_GRP_CD, abs_lift_pp, p_value
 #
-# Output: VVD_v2_NativeCharts.pptx (same directory as this script)
+# Output: VVD_v2_NativeCharts.pptx
 
 import csv
 from collections import defaultdict
@@ -25,7 +26,7 @@ from pptx.dml.color import RGBColor
 # EDIT THESE PATHS before running
 # ============================================================
 INPUT_VINTAGE = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\PVD_P2_vintage_curves.csv"
-INPUT_SUMMARY = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\campaign_summary.csv"
+INPUT_MEGA    = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\vvd_v2_mega_output.csv"
 OUTPUT_PPTX   = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\VVD_v2_NativeCharts.pptx"
 # ============================================================
 
@@ -59,13 +60,13 @@ def get_cohort_color(cohort, cohorts_sorted):
         return COHORT_COLORS_RANKED[rank]
     return COHORT_COLOR_OLD
 
-# --- load campaign summary ---
+# --- load campaign summary from mega output (ALL/ALL rollup rows) ---
 summary = {}
-with open(INPUT_SUMMARY, newline="") as f:
+with open(INPUT_MEGA, newline="") as f:
     for row in csv.DictReader(f):
-        if row["TST_GRP_CD"] == "TG4":
+        if row["COHORT"] == "ALL" and row["RPT_GRP_CD"] == "ALL":
             summary[row["MNE"]] = {
-                "lift": float(row["lift"]),
+                "lift": float(row["abs_lift_pp"]),
                 "p_value": float(row["p_value"]),
             }
 
