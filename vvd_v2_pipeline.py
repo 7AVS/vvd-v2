@@ -17,6 +17,8 @@
 # Cell 4b: Email engagement (optional, decoupled from critical path)
 # Cells 5-9: Analysis (re-run as many times as you want)
 # Cell 10: Vintage curve construction
+# Cell 10b: Fiscal quarter vintage curves
+# Cell 10c: Fiscal quarter mega output (lite)
 # Cell 11: Cleanup
 # ====================================================================
 
@@ -1773,6 +1775,202 @@ print(f"Fiscal quarter vintage curves: {len(fq_vintage_pd):,} rows")
 print(fq_vintage_pd.head(20).to_string(index=False))
 
 download_csv(fq_vintage_pd, "vvd_v2_vintage_curves_fiscal_quarter.csv")
+
+
+# ============================================================
+# CELL 10c: FISCAL QUARTER MEGA OUTPUT (LITE)
+# Lighter version of Cell 5.5 mega_output grouped by MNE × FISCAL_QUARTER × TST_GRP_CD.
+# No RPT_GRP_CD or channel breakdown. No email metrics.
+# Uses same fiscal quarter mapping as Cell 10b (RBC fiscal year starts Nov 1).
+# Excludes March 2026 (same filter as Cell 10b).
+# ============================================================
+
+import pandas as pd
+import base64
+import math
+
+fqm_base = result_df.filter(F.col("TREATMT_STRT_DT") < "2026-03-01")
+
+fqm_month = F.month(F.col("TREATMT_STRT_DT"))
+fqm_year = F.year(F.col("TREATMT_STRT_DT"))
+
+fqm_fiscal_year = F.when(fqm_month >= 11, fqm_year + 1).otherwise(fqm_year)
+fqm_fiscal_quarter = (
+    F.when(fqm_month.isin([11, 12, 1]), F.lit("Q1"))
+     .when(fqm_month.isin([2, 3, 4]), F.lit("Q2"))
+     .when(fqm_month.isin([5, 6, 7]), F.lit("Q3"))
+     .otherwise(F.lit("Q4"))
+)
+fqm_fiscal_cohort = F.concat(F.lit("FY"), fqm_fiscal_year.cast("string"), fqm_fiscal_quarter)
+
+fqm_base = fqm_base.withColumn("FQ_COHORT", fqm_fiscal_cohort)
+
+fqm_action = fqm_base.filter(F.col("TST_GRP_CD") == ACTION_GROUP)
+fqm_control = fqm_base.filter(F.col("TST_GRP_CD") == CONTROL_GROUP)
+
+# Action by MNE × FQ_COHORT
+fqm_action_fq_raw = (
+    fqm_action
+    .groupBy("MNE", "FQ_COHORT")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .collect()
+)
+
+# Action by MNE overall (FQ_COHORT = ALL)
+fqm_action_all_raw = (
+    fqm_action
+    .groupBy("MNE")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .collect()
+)
+
+# Control by MNE × FQ_COHORT
+fqm_control_fq = {}
+for row in fqm_control.groupBy("MNE", "FQ_COHORT").agg(
+    F.count("*").alias("deployments"),
+    F.countDistinct("CLNT_NO").alias("clients"),
+    F.sum("SUCCESS").alias("successes"),
+).collect():
+    fqm_control_fq[(str(row.MNE), str(row.FQ_COHORT))] = {
+        "deployments": int(row.deployments),
+        "clients": int(row.clients),
+        "successes": int(row.successes),
+    }
+
+# Control by MNE overall
+fqm_control_all = {}
+for row in fqm_control.groupBy("MNE").agg(
+    F.count("*").alias("deployments"),
+    F.countDistinct("CLNT_NO").alias("clients"),
+    F.sum("SUCCESS").alias("successes"),
+).collect():
+    fqm_control_all[str(row.MNE)] = {
+        "deployments": int(row.deployments),
+        "clients": int(row.clients),
+        "successes": int(row.successes),
+    }
+
+# Contact stats by MNE (action only)
+fqm_contact_raw = (
+    fqm_action
+    .groupBy("CLNT_NO", "MNE")
+    .agg(F.count("*").alias("contact_count"))
+    .groupBy("MNE")
+    .agg(
+        F.round(F.avg("contact_count"), 2).alias("avg_contacts"),
+        F.expr("percentile_approx(contact_count, 0.5)").alias("median_contacts"),
+        F.expr("percentile_approx(contact_count, 0.9)").alias("p90_contacts"),
+        F.max("contact_count").alias("max_contacts"),
+    )
+    .collect()
+)
+fqm_contact_stats = {}
+for row in fqm_contact_raw:
+    fqm_contact_stats[str(row.MNE)] = {
+        "avg_contacts": float(row.avg_contacts),
+        "median_contacts": int(row.median_contacts),
+        "p90_contacts": int(row.p90_contacts),
+        "max_contacts": int(row.max_contacts),
+    }
+
+def fqm_build_row(mne, fq_cohort, a, c, cs):
+    a_rate = a["successes"] / a["deployments"] * 100 if a["deployments"] > 0 else 0
+    c_rate = c["successes"] / c["deployments"] * 100 if c["deployments"] > 0 else 0
+    abs_lift = a_rate - c_rate
+    rel_lift = ((a_rate - c_rate) / c_rate * 100) if c_rate > 0 else 0
+    p_val = compute_sig(a["successes"], a["deployments"], c["successes"], c["deployments"])
+    sig = "99.9%" if p_val < 0.001 else "99%" if p_val < 0.01 else "95%" if p_val < 0.05 else "No"
+    incr = int(abs_lift / 100 * a["clients"])
+
+    if mne in NIBT_ELIGIBLE and sig != "No" and abs_lift > 0:
+        nibt = round(incr * NIBT_PER_CLIENT, 2)
+        nibt_flag = "eligible"
+    elif mne in NIBT_ARGUABLE and sig != "No" and abs_lift > 0:
+        nibt = round(incr * NIBT_PER_CLIENT, 2)
+        nibt_flag = "arguable"
+    else:
+        nibt = 0
+        nibt_flag = "n/a" if mne not in NIBT_ELIGIBLE + NIBT_ARGUABLE else "not_sig"
+
+    return {
+        "MNE": mne,
+        "FISCAL_QUARTER": fq_cohort,
+        "action_deployments": a["deployments"],
+        "control_deployments": c["deployments"],
+        "action_clients": a["clients"],
+        "control_clients": c["clients"],
+        "action_successes": a["successes"],
+        "control_successes": c["successes"],
+        "action_rate_pct": round(a_rate, 4),
+        "control_rate_pct": round(c_rate, 4),
+        "abs_lift_pp": round(abs_lift, 4),
+        "rel_lift_pct": round(rel_lift, 2),
+        "p_value": round(p_val, 6),
+        "sig_flag": sig,
+        "incremental_clients": incr,
+        "nibt_revenue": nibt,
+        "nibt_flag": nibt_flag,
+        "avg_contacts": cs.get("avg_contacts"),
+        "median_contacts": cs.get("median_contacts"),
+        "p90_contacts": cs.get("p90_contacts"),
+        "max_contacts": cs.get("max_contacts"),
+    }
+
+fqm_rows = []
+
+# Per fiscal quarter rows
+for row in fqm_action_fq_raw:
+    mne, fq = str(row.MNE), str(row.FQ_COHORT)
+    a = {"deployments": int(row.deployments), "clients": int(row.clients), "successes": int(row.successes)}
+    c = fqm_control_fq.get((mne, fq), {"deployments": 0, "clients": 0, "successes": 0})
+    cs = fqm_contact_stats.get(mne, {})
+    fqm_rows.append(fqm_build_row(mne, fq, a, c, cs))
+
+# Overall rollup (ALL fiscal quarters)
+for row in fqm_action_all_raw:
+    mne = str(row.MNE)
+    a = {"deployments": int(row.deployments), "clients": int(row.clients), "successes": int(row.successes)}
+    c = fqm_control_all.get(mne, {"deployments": 0, "clients": 0, "successes": 0})
+    cs = fqm_contact_stats.get(mne, {})
+    fqm_rows.append(fqm_build_row(mne, "ALL", a, c, cs))
+
+fqm_output = pd.DataFrame(fqm_rows)
+fqm_output = fqm_output.sort_values(["MNE", "FISCAL_QUARTER"]).reset_index(drop=True)
+
+print("=" * 75)
+print(f"FISCAL QUARTER MEGA-OUTPUT: {len(fqm_output)} rows × {len(fqm_output.columns)} columns")
+print("=" * 75)
+
+fqm_all = fqm_output[fqm_output["FISCAL_QUARTER"] == "ALL"]
+print(f"\n{'MNE':<6} {'A_Rate':>7} {'C_Rate':>7} {'Lift':>7} {'Sig':>6} "
+      f"{'Incr':>7} {'NIBT':>10} {'Flag':>9} {'AvgC':>5}")
+print("-" * 72)
+for _, r in fqm_all.iterrows():
+    print(f"{r['MNE']:<6} {r['action_rate_pct']:>6.2f}% {r['control_rate_pct']:>6.2f}% "
+          f"{r['abs_lift_pp']:>+6.2f}% {r['sig_flag']:>6} {r['incremental_clients']:>7,} "
+          f"${r['nibt_revenue']:>9,.0f} {r['nibt_flag']:>9} {r['avg_contacts']:>5.1f}")
+
+print(f"\n{'='*75}")
+print("PER FISCAL QUARTER")
+print("=" * 75)
+fqm_detail = fqm_output[fqm_output["FISCAL_QUARTER"] != "ALL"]
+print(f"{'MNE':<6} {'FQ':<10} {'A_Dep':>10} {'A_Cli':>10} {'A_Rate':>7} {'C_Rate':>7} {'Lift':>7} {'Sig':>6}")
+print("-" * 72)
+for _, r in fqm_detail.iterrows():
+    print(f"{r['MNE']:<6} {r['FISCAL_QUARTER']:<10} "
+          f"{r['action_deployments']:>10,} {r['action_clients']:>10,} "
+          f"{r['action_rate_pct']:>6.2f}% {r['control_rate_pct']:>6.2f}% "
+          f"{r['abs_lift_pp']:>+6.2f}% {r['sig_flag']:>6}")
+
+download_csv(fqm_output, "vvd_v2_mega_output_fiscal_quarter.csv")
 
 
 # ============================================================
