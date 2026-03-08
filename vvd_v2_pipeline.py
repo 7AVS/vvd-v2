@@ -732,6 +732,291 @@ for mne in sorted(overall_data.keys()):
 
 
 # ============================================================
+# CELL 5.5: MEGA-OUTPUT — CONSOLIDATED CAMPAIGN METRICS
+# One row per MNE × COHORT + ALL rollup. 24 columns.
+# Exports as CSV — this is the auditable artifact for slides.
+# Re-runnable. Uses persisted result_df.
+# ============================================================
+
+import pandas as pd
+import base64
+import math
+
+try:
+    from IPython.display import display, HTML
+except ImportError:
+    pass
+
+def download_csv(data, filename="results.csv"):
+    csv_data = data.to_csv(index=False)
+    size_mb = len(csv_data.encode('utf-8')) / (1024 * 1024)
+    if size_mb > 50:
+        print(f"Data too large ({size_mb:.1f} MB). Filter before exporting.")
+        return
+    b64 = base64.b64encode(csv_data.encode()).decode()
+    link = (
+        f'<a download="{filename}" href="data:text/csv;base64,{b64}" '
+        f'style="padding:6px 12px; background:#2196F3; color:white; '
+        f'text-decoration:none; border-radius:3px; margin:2px; display:inline-block;">'
+        f'Download {filename}</a>'
+    )
+    display(HTML(f'<div style="margin:5px 0;">{link} <span style="color:#666;">({size_mb:.2f} MB)</span></div>'))
+
+NIBT_PER_CLIENT = 78.21
+
+# --- Step 1: Performance metrics (MNE × COHORT × TST_GRP_CD) ---
+perf_raw = (
+    result_df
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .collect()
+)
+
+# Build per-cohort rows
+perf_dict = defaultdict(lambda: defaultdict(dict))
+for row in perf_raw:
+    key = (str(row.MNE), str(row.COHORT))
+    perf_dict[key][str(row.TST_GRP_CD)] = {
+        "deployments": int(row.deployments),
+        "clients": int(row.clients),
+        "successes": int(row.successes),
+    }
+
+# Also build overall (ALL cohort) rows
+overall_raw = (
+    result_df
+    .groupBy("MNE", "TST_GRP_CD")
+    .agg(
+        F.count("*").alias("deployments"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+        F.sum("SUCCESS").alias("successes"),
+    )
+    .collect()
+)
+overall_dict = defaultdict(dict)
+for row in overall_raw:
+    overall_dict[str(row.MNE)][str(row.TST_GRP_CD)] = {
+        "deployments": int(row.deployments),
+        "clients": int(row.clients),
+        "successes": int(row.successes),
+    }
+
+# --- Step 2: Contact stats (MNE-level, action group only) ---
+action_only = result_df.filter(F.col("TST_GRP_CD") == ACTION_GROUP)
+
+contact_stats_raw = (
+    action_only
+    .groupBy("CLNT_NO", "MNE")
+    .agg(F.count("*").alias("contact_count"))
+    .groupBy("MNE")
+    .agg(
+        F.round(F.avg("contact_count"), 2).alias("avg_contacts"),
+        F.expr("percentile_approx(contact_count, 0.5)").alias("median_contacts"),
+        F.expr("percentile_approx(contact_count, 0.9)").alias("p90_contacts"),
+        F.max("contact_count").alias("max_contacts"),
+    )
+    .collect()
+)
+contact_stats = {}
+for row in contact_stats_raw:
+    contact_stats[str(row.MNE)] = {
+        "avg_contacts": float(row.avg_contacts),
+        "median_contacts": int(row.median_contacts),
+        "p90_contacts": int(row.p90_contacts),
+        "max_contacts": int(row.max_contacts),
+    }
+
+# --- Step 3: Email metrics (MNE × COHORT, action group) ---
+email_cols_exist = "EMAIL_SENT_DT" in [f.name for f in result_df.schema.fields]
+
+email_stats = {}
+if email_cols_exist:
+    email_raw = (
+        action_only
+        .groupBy("MNE", "COHORT")
+        .agg(
+            F.count("*").alias("total_deploys"),
+            F.sum(F.when(F.col("EMAIL_SENT_DT").isNotNull(), 1).otherwise(0)).alias("em_sent"),
+            F.sum(F.when(F.col("EMAIL_OPENED_DT").isNotNull(), 1).otherwise(0)).alias("em_opened"),
+            F.sum(F.when(F.col("EMAIL_CLICKED_DT").isNotNull(), 1).otherwise(0)).alias("em_clicked"),
+            F.sum(F.when(F.col("EMAIL_UNSUBSCRIBED_DT").isNotNull(), 1).otherwise(0)).alias("em_unsub"),
+        )
+        .collect()
+    )
+    for row in email_raw:
+        key = (str(row.MNE), str(row.COHORT))
+        sent = int(row.em_sent)
+        email_stats[key] = {
+            "email_sent_rate": round(sent / int(row.total_deploys) * 100, 2) if int(row.total_deploys) > 0 else 0,
+            "email_open_rate": round(int(row.em_opened) / sent * 100, 2) if sent > 0 else None,
+            "email_click_rate": round(int(row.em_clicked) / sent * 100, 2) if sent > 0 else None,
+            "email_unsub_rate": round(int(row.em_unsub) / sent * 100, 2) if sent > 0 else None,
+        }
+
+    # Overall email stats
+    email_overall_raw = (
+        action_only
+        .groupBy("MNE")
+        .agg(
+            F.count("*").alias("total_deploys"),
+            F.sum(F.when(F.col("EMAIL_SENT_DT").isNotNull(), 1).otherwise(0)).alias("em_sent"),
+            F.sum(F.when(F.col("EMAIL_OPENED_DT").isNotNull(), 1).otherwise(0)).alias("em_opened"),
+            F.sum(F.when(F.col("EMAIL_CLICKED_DT").isNotNull(), 1).otherwise(0)).alias("em_clicked"),
+            F.sum(F.when(F.col("EMAIL_UNSUBSCRIBED_DT").isNotNull(), 1).otherwise(0)).alias("em_unsub"),
+        )
+        .collect()
+    )
+    for row in email_overall_raw:
+        key = (str(row.MNE), "ALL")
+        sent = int(row.em_sent)
+        email_stats[key] = {
+            "email_sent_rate": round(sent / int(row.total_deploys) * 100, 2) if int(row.total_deploys) > 0 else 0,
+            "email_open_rate": round(int(row.em_opened) / sent * 100, 2) if sent > 0 else None,
+            "email_click_rate": round(int(row.em_clicked) / sent * 100, 2) if sent > 0 else None,
+            "email_unsub_rate": round(int(row.em_unsub) / sent * 100, 2) if sent > 0 else None,
+        }
+
+# --- Step 4: Assemble the mega-output ---
+def compute_sig(a_successes, a_n, c_successes, c_n):
+    if a_n == 0 or c_n == 0:
+        return 1.0
+    a_p = a_successes / a_n
+    c_p = c_successes / c_n
+    pooled = (a_successes + c_successes) / (a_n + c_n)
+    if pooled <= 0 or pooled >= 1:
+        return 1.0
+    se = (pooled * (1 - pooled) * (1/a_n + 1/c_n)) ** 0.5
+    if se == 0:
+        return 1.0
+    z = (a_p - c_p) / se
+    if HAS_SCIPY:
+        return float(2 * (1 - scipy_norm.cdf(abs(z))))
+    else:
+        return float(2 * math.exp(-0.5 * z * z) / (1 + 0.3275911 * abs(z))) if abs(z) < 10 else 0.0
+
+rows = []
+
+# Per-cohort rows
+for (mne, cohort) in sorted(perf_dict.keys()):
+    a = perf_dict[(mne, cohort)].get(ACTION_GROUP, {})
+    c = perf_dict[(mne, cohort)].get(CONTROL_GROUP, {})
+    if not a or not c:
+        continue
+
+    a_rate = a["successes"] / a["deployments"] * 100 if a["deployments"] > 0 else 0
+    c_rate = c["successes"] / c["deployments"] * 100 if c["deployments"] > 0 else 0
+    abs_lift = a_rate - c_rate
+    rel_lift = ((a_rate - c_rate) / c_rate * 100) if c_rate > 0 else 0
+    p_val = compute_sig(a["successes"], a["deployments"], c["successes"], c["deployments"])
+    sig = "99.9%" if p_val < 0.001 else "99%" if p_val < 0.01 else "95%" if p_val < 0.05 else "No"
+    incr = int(abs_lift / 100 * a["clients"])
+    nibt = round(incr * NIBT_PER_CLIENT, 2) if sig != "No" and abs_lift > 0 else 0
+
+    cs = contact_stats.get(mne, {})
+    em = email_stats.get((mne, cohort), {})
+
+    rows.append({
+        "MNE": mne,
+        "COHORT": cohort,
+        "action_deployments": a["deployments"],
+        "control_deployments": c["deployments"],
+        "action_clients": a["clients"],
+        "control_clients": c["clients"],
+        "action_successes": a["successes"],
+        "control_successes": c["successes"],
+        "action_rate_pct": round(a_rate, 4),
+        "control_rate_pct": round(c_rate, 4),
+        "abs_lift_pp": round(abs_lift, 4),
+        "rel_lift_pct": round(rel_lift, 2),
+        "p_value": round(p_val, 6),
+        "sig_flag": sig,
+        "incremental_clients": incr,
+        "nibt_revenue": nibt,
+        "avg_contacts": cs.get("avg_contacts"),
+        "median_contacts": cs.get("median_contacts"),
+        "p90_contacts": cs.get("p90_contacts"),
+        "max_contacts": cs.get("max_contacts"),
+        "email_sent_rate": em.get("email_sent_rate"),
+        "email_open_rate": em.get("email_open_rate"),
+        "email_click_rate": em.get("email_click_rate"),
+        "email_unsub_rate": em.get("email_unsub_rate"),
+    })
+
+# ALL rollup rows
+for mne in sorted(overall_dict.keys()):
+    a = overall_dict[mne].get(ACTION_GROUP, {})
+    c = overall_dict[mne].get(CONTROL_GROUP, {})
+    if not a or not c:
+        continue
+
+    a_rate = a["successes"] / a["deployments"] * 100 if a["deployments"] > 0 else 0
+    c_rate = c["successes"] / c["deployments"] * 100 if c["deployments"] > 0 else 0
+    abs_lift = a_rate - c_rate
+    rel_lift = ((a_rate - c_rate) / c_rate * 100) if c_rate > 0 else 0
+    p_val = compute_sig(a["successes"], a["deployments"], c["successes"], c["deployments"])
+    sig = "99.9%" if p_val < 0.001 else "99%" if p_val < 0.01 else "95%" if p_val < 0.05 else "No"
+    incr = int(abs_lift / 100 * a["clients"])
+    nibt = round(incr * NIBT_PER_CLIENT, 2) if sig != "No" and abs_lift > 0 else 0
+
+    cs = contact_stats.get(mne, {})
+    em = email_stats.get((mne, "ALL"), {})
+
+    rows.append({
+        "MNE": mne,
+        "COHORT": "ALL",
+        "action_deployments": a["deployments"],
+        "control_deployments": c["deployments"],
+        "action_clients": a["clients"],
+        "control_clients": c["clients"],
+        "action_successes": a["successes"],
+        "control_successes": c["successes"],
+        "action_rate_pct": round(a_rate, 4),
+        "control_rate_pct": round(c_rate, 4),
+        "abs_lift_pp": round(abs_lift, 4),
+        "rel_lift_pct": round(rel_lift, 2),
+        "p_value": round(p_val, 6),
+        "sig_flag": sig,
+        "incremental_clients": incr,
+        "nibt_revenue": nibt,
+        "avg_contacts": cs.get("avg_contacts"),
+        "median_contacts": cs.get("median_contacts"),
+        "p90_contacts": cs.get("p90_contacts"),
+        "max_contacts": cs.get("max_contacts"),
+        "email_sent_rate": em.get("email_sent_rate"),
+        "email_open_rate": em.get("email_open_rate"),
+        "email_click_rate": em.get("email_click_rate"),
+        "email_unsub_rate": em.get("email_unsub_rate"),
+    })
+
+mega_output = pd.DataFrame(rows)
+mega_output = mega_output.sort_values(["MNE", "COHORT"]).reset_index(drop=True)
+
+print("=" * 60)
+print(f"MEGA-OUTPUT: {len(mega_output)} rows × {len(mega_output.columns)} columns")
+print("=" * 60)
+
+# Summary view: ALL cohort rows only
+all_rows = mega_output[mega_output["COHORT"] == "ALL"]
+print(f"\n{'MNE':<6} {'A_Rate':>7} {'C_Rate':>7} {'Lift':>7} {'Sig':>6} "
+      f"{'Incr':>7} {'NIBT':>10} {'AvgC':>5} {'MedC':>5}")
+print("-" * 68)
+for _, r in all_rows.iterrows():
+    print(f"{r['MNE']:<6} {r['action_rate_pct']:>6.2f}% {r['control_rate_pct']:>6.2f}% "
+          f"{r['abs_lift_pp']:>+6.2f}% {r['sig_flag']:>6} {r['incremental_clients']:>7,} "
+          f"${r['nibt_revenue']:>9,.0f} {r['avg_contacts']:>5.1f} "
+          f"{r['median_contacts']:>5.0f}")
+
+print(f"\nTotal NIBT (significant only): ${all_rows['nibt_revenue'].sum():,.0f}")
+print(f"Total incremental clients:     {all_rows[all_rows['sig_flag'] != 'No']['incremental_clients'].sum():,}")
+
+download_csv(mega_output, "vvd_v2_mega_output.csv")
+
+
+# ============================================================
 # CELL 7: PHASE 3 — OVERCONTACTING & ORCHESTRATION
 # Re-runnable. Uses persisted result_df.
 # ============================================================
