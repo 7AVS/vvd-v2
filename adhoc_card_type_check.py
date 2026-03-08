@@ -2,6 +2,45 @@
 # Checks VISA_DR_CRD_BRND_CD and other card-related fields in DDWTA_VISA_DR_CRD
 
 from pyspark.sql import functions as F
+import base64
+
+def download_excel(sheets_dict, filename):
+    """Browser download link for multi-sheet Excel. Falls back to CSVs if openpyxl unavailable."""
+    import pandas as pd
+    from io import BytesIO
+    from IPython.display import display, HTML
+    try:
+        import openpyxl  # noqa: F401
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            for sheet_name, df in sheets_dict.items():
+                pdf = df.toPandas() if hasattr(df, 'toPandas') else df
+                pdf.to_excel(writer, sheet_name=sheet_name, index=False)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        size_mb = buf.tell() / 1_048_576
+        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        display(HTML(f'<a href="data:{mime};base64,{b64}" download="{filename}" '
+                     f'style="font-size:16px;padding:8px 16px;background:#1a73e8;color:white;'
+                     f'text-decoration:none;border-radius:4px">Download {filename}</a> '
+                     f'({size_mb:.2f} MB)'))
+    except ImportError:
+        print("openpyxl not available — falling back to individual CSVs")
+        csv_name = filename.replace(".xlsx", "")
+        for sheet_name, df in sheets_dict.items():
+            safe = sheet_name.replace(" ", "_").lower()
+            download_csv(df, f"{csv_name}_{safe}.csv")
+
+def download_csv(df, filename):
+    """Browser download link for single CSV."""
+    pdf = df.toPandas() if hasattr(df, 'toPandas') else df
+    csv_data = pdf.to_csv(index=False)
+    b64 = base64.b64encode(csv_data.encode()).decode()
+    size_mb = len(csv_data) / 1_048_576
+    from IPython.display import display, HTML
+    display(HTML(f'<a href="data:text/csv;base64,{b64}" download="{filename}" '
+                 f'style="font-size:16px;padding:8px 16px;background:#1a73e8;color:white;'
+                 f'text-decoration:none;border-radius:4px">Download {filename}</a> '
+                 f'({size_mb:.2f} MB)'))
 
 CARD_DATA_PATH = "/prod/sz/tsz/00050/data/DDWTA_VISA_DR_CRD/PartitionColumn=Latest/CAPTR_DT={year}*"
 
@@ -26,10 +65,11 @@ print(f"\nVVD cards (2025-2026): {vvd_cards.count():,}")
 
 # VISA_DR_CRD_BRND_CD distribution (the Card_Type source field)
 print("\n--- VISA_DR_CRD_BRND_CD distribution ---")
-vvd_cards.groupBy("VISA_DR_CRD_BRND_CD").agg(
+dist_all = vvd_cards.groupBy("VISA_DR_CRD_BRND_CD").agg(
     F.count("*").alias("count"),
     (F.count("*") / vvd_cards.count() * 100).alias("pct")
-).orderBy(F.desc("count")).show(30, truncate=False)
+).orderBy(F.desc("count"))
+dist_all.show(30, truncate=False)
 
 # Null rate
 total = vvd_cards.count()
@@ -42,10 +82,11 @@ vvd_experiment = vvd_cards.join(experiment_clients, "CLNT_NO", "left_semi")
 print(f"\nVVD cards (experiment clients only): {vvd_experiment.count():,}")
 
 print("\n--- VISA_DR_CRD_BRND_CD for experiment clients ---")
-vvd_experiment.groupBy("VISA_DR_CRD_BRND_CD").agg(
+dist_exp = vvd_experiment.groupBy("VISA_DR_CRD_BRND_CD").agg(
     F.count("*").alias("count"),
     (F.count("*") / vvd_experiment.count() * 100).alias("pct")
-).orderBy(F.desc("count")).show(30, truncate=False)
+).orderBy(F.desc("count"))
+dist_exp.show(30, truncate=False)
 
 # Check other potentially interesting card fields
 for col_name in ["CRD_TP", "CRD_BRND_CD", "PROD_CD", "PROD_TP_CD"]:
@@ -54,6 +95,12 @@ for col_name in ["CRD_TP", "CRD_BRND_CD", "PROD_CD", "PROD_TP_CD"]:
         vvd_experiment.groupBy(col_name).agg(
             F.count("*").alias("count")
         ).orderBy(F.desc("count")).show(20, truncate=False)
+
+# Export distribution results
+dist_combined = (
+    dist_all.withColumn("scope", F.lit("all_vvd"))
+    .unionByName(dist_exp.withColumn("scope", F.lit("experiment_only")))
+)
 
 # ============================================================
 # Monthly time series — card type evolution by ISS_DT
@@ -127,6 +174,18 @@ monthly_exp_pct = (
 print("\n--- Volume per month per card type (experiment clients) ---")
 monthly_exp_pct.select("year_month", "VISA_DR_CRD_BRND_CD", "count", "pct", "month_total").show(200, truncate=False)
 
+# Export time series results
+ts_combined = (
+    monthly_all_pct
+    .select("year_month", "VISA_DR_CRD_BRND_CD", "count", "pct", "month_total")
+    .withColumn("scope", F.lit("all_vvd"))
+    .unionByName(
+        monthly_exp_pct
+        .select("year_month", "VISA_DR_CRD_BRND_CD", "count", "pct", "month_total")
+        .withColumn("scope", F.lit("experiment_only"))
+    )
+)
+
 # --- Plotly visualization (percentage share over time) ---
 try:
     import plotly.graph_objects as go
@@ -185,3 +244,10 @@ try:
 
 except Exception as e:
     print(f"\nPlotly chart skipped: {e}")
+
+# ── EXPORT ALL RESULTS ──
+card_type_sheets = {}
+if 'dist_combined' in dir(): card_type_sheets["Distribution"] = dist_combined
+if 'ts_combined' in dir(): card_type_sheets["Time Series"] = ts_combined
+if card_type_sheets:
+    download_excel(card_type_sheets, "vvd_v2_card_type.xlsx")

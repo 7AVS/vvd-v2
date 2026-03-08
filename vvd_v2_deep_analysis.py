@@ -28,6 +28,45 @@ from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 from pyspark.sql.types import DoubleType
 from pyspark import StorageLevel
+import base64
+
+def download_excel(sheets_dict, filename):
+    """Browser download link for multi-sheet Excel. Falls back to CSVs if openpyxl unavailable."""
+    import pandas as pd
+    from io import BytesIO
+    from IPython.display import display, HTML
+    try:
+        import openpyxl  # noqa: F401
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            for sheet_name, df in sheets_dict.items():
+                pdf = df.toPandas() if hasattr(df, 'toPandas') else df
+                pdf.to_excel(writer, sheet_name=sheet_name, index=False)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        size_mb = buf.tell() / 1_048_576
+        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        display(HTML(f'<a href="data:{mime};base64,{b64}" download="{filename}" '
+                     f'style="font-size:16px;padding:8px 16px;background:#1a73e8;color:white;'
+                     f'text-decoration:none;border-radius:4px">Download {filename}</a> '
+                     f'({size_mb:.2f} MB)'))
+    except ImportError:
+        print("openpyxl not available — falling back to individual CSVs")
+        csv_name = filename.replace(".xlsx", "")
+        for sheet_name, df in sheets_dict.items():
+            safe = sheet_name.replace(" ", "_").lower()
+            download_csv(df, f"{csv_name}_{safe}.csv")
+
+def download_csv(df, filename):
+    """Browser download link for single CSV."""
+    pdf = df.toPandas() if hasattr(df, 'toPandas') else df
+    csv_data = pdf.to_csv(index=False)
+    b64 = base64.b64encode(csv_data.encode()).decode()
+    size_mb = len(csv_data) / 1_048_576
+    from IPython.display import display, HTML
+    display(HTML(f'<a href="data:text/csv;base64,{b64}" download="{filename}" '
+                 f'style="font-size:16px;padding:8px 16px;background:#1a73e8;color:white;'
+                 f'text-decoration:none;border-radius:4px">Download {filename}</a> '
+                 f'({size_mb:.2f} MB)'))
 
 # Load from HDFS if result_df not in memory
 try:
@@ -145,6 +184,7 @@ print("\nPost-acquisition spending OVERALL (within treatment window):")
 acq_result.show(20, truncate=False)
 
 
+
 # ============================================================
 # CELL 3: POST-ACTIVATION SPENDING (VDT)
 # Only ~5% of cards need manual activation (rest are digital).
@@ -216,6 +256,7 @@ act_result = (
 
 print("\nPost-activation spending OVERALL (within treatment window):")
 act_result.show(20, truncate=False)
+
 
 
 # ============================================================
@@ -356,6 +397,7 @@ for mne in ["VUT", "VAW"]:
             print(f"  {cohort}: Spend DiD = ${did_spend:,.2f}/client")
 
 
+
 # ============================================================
 # CELL 5: WALLET PROVISIONING — USAGE COMPARISON
 # Among VUT/VAW clients: those who provisioned vs those who didn't.
@@ -440,6 +482,7 @@ wallet_spend_summary = (
 
 print("\nSpending by provisioning status OVERALL (within treatment window):")
 wallet_spend_summary.show(20, truncate=False)
+
 
 
 # ============================================================
@@ -561,6 +604,7 @@ if cohort_summary_rows:
         .orderBy("MNE", "TST_GRP_CD")
     )
     overall_rates.show(20, truncate=False)
+
 else:
     print("No cohort data to summarize.")
 
@@ -658,6 +702,38 @@ velocity_pd = velocity_df.toPandas()
 print(f"\nVelocity curve data: {len(velocity_pd):,} rows")
 print("Columns: MNE, COHORT, TST_GRP_CD, DAY, avg_cum_spend_per_client, total_clients")
 print("Use this for Plotly/matplotlib line charts (Action vs Control per campaign per cohort)")
+
+# ── EXPORT ALL RESULTS ──
+deep_analysis_sheets = {}
+
+# Cell 2 — Post-acquisition
+if 'acq_result' in dir(): deep_analysis_sheets["Post-Acq Spending"] = acq_result
+if 'acq_result_cohort' in dir(): deep_analysis_sheets["Post-Acq Cohort"] = acq_result_cohort
+
+# Cell 3 — Post-activation
+if 'act_result' in dir(): deep_analysis_sheets["Post-Act Spending"] = act_result
+if 'act_result_cohort' in dir(): deep_analysis_sheets["Post-Act Cohort"] = act_result_cohort
+
+# Cell 4 — DiD
+if 'prov_summary_cohort' in dir(): deep_analysis_sheets["DiD Cohort"] = prov_summary_cohort
+if 'prov_did' in dir(): deep_analysis_sheets["DiD Summary"] = prov_did
+if 'prov_did_cohort' in dir(): deep_analysis_sheets["DiD Pivoted"] = prov_did_cohort
+
+# Cell 5 — Wallet usage
+if 'wallet_usage' in dir(): deep_analysis_sheets["Wallet Usage"] = wallet_usage
+if 'wallet_usage_cohort' in dir(): deep_analysis_sheets["Wallet Usage Cohort"] = wallet_usage_cohort
+if 'wallet_spend_summary' in dir(): deep_analysis_sheets["Wallet Spend"] = wallet_spend_summary
+if 'wallet_spend_summary_cohort' in dir(): deep_analysis_sheets["Wallet Spend Cohort"] = wallet_spend_summary_cohort
+
+# Cell 5b — Cohort summary
+if 'cohort_summary_df' in dir(): deep_analysis_sheets["Cohort Summary"] = cohort_summary_df
+if 'overall_rates' in dir(): deep_analysis_sheets["Overall Rates"] = overall_rates
+
+# Cell 6 — Velocity
+if 'velocity_pd' in dir(): deep_analysis_sheets["Spend Velocity"] = velocity_pd
+
+if deep_analysis_sheets:
+    download_excel(deep_analysis_sheets, "vvd_v2_deep_analysis.xlsx")
 
 
 # ============================================================
