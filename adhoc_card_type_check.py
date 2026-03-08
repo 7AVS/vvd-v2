@@ -54,3 +54,134 @@ for col_name in ["CRD_TP", "CRD_BRND_CD", "PROD_CD", "PROD_TP_CD"]:
         vvd_experiment.groupBy(col_name).agg(
             F.count("*").alias("count")
         ).orderBy(F.desc("count")).show(20, truncate=False)
+
+# ============================================================
+# Monthly time series — card type evolution by ISS_DT
+# ============================================================
+
+from pyspark.sql import Window
+
+CARD_CODES = ["01", "03", "04"]
+
+vvd_cards_ts = (
+    vvd_cards
+    .filter(F.col("ISS_DT").isNotNull())
+    .filter(F.col("VISA_DR_CRD_BRND_CD").isin(CARD_CODES))
+    .withColumn("year_month", F.date_format(F.col("ISS_DT"), "yyyy-MM"))
+)
+
+# --- All VVD cards: monthly volume by card type ---
+print("\n" + "="*70)
+print("MONTHLY TIME SERIES — ALL VVD CARDS (codes 01, 03, 04)")
+print("="*70)
+
+monthly_all = (
+    vvd_cards_ts
+    .groupBy("year_month", "VISA_DR_CRD_BRND_CD")
+    .agg(F.count("*").alias("count"))
+)
+
+# Total per month for percentage calc
+monthly_total = (
+    monthly_all
+    .groupBy("year_month")
+    .agg(F.sum("count").alias("month_total"))
+)
+
+monthly_all_pct = (
+    monthly_all
+    .join(monthly_total, "year_month")
+    .withColumn("pct", F.round(F.col("count") / F.col("month_total") * 100, 2))
+    .orderBy("year_month", "VISA_DR_CRD_BRND_CD")
+)
+
+print("\n--- Volume per month per card type ---")
+monthly_all_pct.select("year_month", "VISA_DR_CRD_BRND_CD", "count", "pct", "month_total").show(200, truncate=False)
+
+# --- Experiment clients only: monthly volume by card type ---
+print("\n" + "="*70)
+print("MONTHLY TIME SERIES — EXPERIMENT CLIENTS ONLY (codes 01, 03, 04)")
+print("="*70)
+
+vvd_experiment_ts = vvd_cards_ts.join(experiment_clients, "CLNT_NO", "left_semi")
+
+monthly_exp = (
+    vvd_experiment_ts
+    .groupBy("year_month", "VISA_DR_CRD_BRND_CD")
+    .agg(F.count("*").alias("count"))
+)
+
+monthly_exp_total = (
+    monthly_exp
+    .groupBy("year_month")
+    .agg(F.sum("count").alias("month_total"))
+)
+
+monthly_exp_pct = (
+    monthly_exp
+    .join(monthly_exp_total, "year_month")
+    .withColumn("pct", F.round(F.col("count") / F.col("month_total") * 100, 2))
+    .orderBy("year_month", "VISA_DR_CRD_BRND_CD")
+)
+
+print("\n--- Volume per month per card type (experiment clients) ---")
+monthly_exp_pct.select("year_month", "VISA_DR_CRD_BRND_CD", "count", "pct", "month_total").show(200, truncate=False)
+
+# --- Plotly visualization (percentage share over time) ---
+try:
+    import plotly.graph_objects as go
+
+    # Collect for charting — all VVD cards
+    rows_all = monthly_all_pct.select("year_month", "VISA_DR_CRD_BRND_CD", "pct").collect()
+    data_all = {}
+    for r in rows_all:
+        code = str(r["VISA_DR_CRD_BRND_CD"])
+        data_all.setdefault(code, {"x": [], "y": []})
+        data_all[code]["x"].append(str(r["year_month"]))
+        data_all[code]["y"].append(float(r["pct"]))
+
+    fig = go.Figure()
+    for code in sorted(data_all.keys()):
+        fig.add_trace(go.Scatter(
+            x=data_all[code]["x"],
+            y=data_all[code]["y"],
+            mode="lines+markers",
+            name=f"Code {code}"
+        ))
+    fig.update_layout(
+        title="Card Type % Share by Month (All VVD Cards)",
+        xaxis_title="Month",
+        yaxis_title="% Share",
+        yaxis=dict(range=[0, 100]),
+        hovermode="x unified"
+    )
+    displayHTML(fig.to_html(include_plotlyjs='cdn'))
+
+    # Collect for charting — experiment clients
+    rows_exp = monthly_exp_pct.select("year_month", "VISA_DR_CRD_BRND_CD", "pct").collect()
+    data_exp = {}
+    for r in rows_exp:
+        code = str(r["VISA_DR_CRD_BRND_CD"])
+        data_exp.setdefault(code, {"x": [], "y": []})
+        data_exp[code]["x"].append(str(r["year_month"]))
+        data_exp[code]["y"].append(float(r["pct"]))
+
+    fig2 = go.Figure()
+    for code in sorted(data_exp.keys()):
+        fig2.add_trace(go.Scatter(
+            x=data_exp[code]["x"],
+            y=data_exp[code]["y"],
+            mode="lines+markers",
+            name=f"Code {code}"
+        ))
+    fig2.update_layout(
+        title="Card Type % Share by Month (Experiment Clients)",
+        xaxis_title="Month",
+        yaxis_title="% Share",
+        yaxis=dict(range=[0, 100]),
+        hovermode="x unified"
+    )
+    displayHTML(fig2.to_html(include_plotlyjs='cdn'))
+
+except Exception as e:
+    print(f"\nPlotly chart skipped: {e}")

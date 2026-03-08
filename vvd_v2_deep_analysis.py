@@ -26,6 +26,8 @@
 
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
+from pyspark.sql.types import DoubleType
+from pyspark import StorageLevel
 
 # Load from HDFS if result_df not in memory
 try:
@@ -60,7 +62,7 @@ pos_df = (
 # Pre-filter to experiment clients
 experiment_clients = result_df.select("CLNT_NO").distinct()
 pos_df = pos_df.join(experiment_clients, "CLNT_NO", "left_semi")
-pos_df.persist()
+pos_df.persist(StorageLevel.MEMORY_AND_DISK)
 print(f"POS transactions (experiment clients): {pos_df.count():,}")
 
 
@@ -82,6 +84,7 @@ acq_clients = (
     .filter(F.col("ACQUISITION_SUCCESS") == 1)
     .select("CLNT_NO", "MNE", "TST_GRP_CD",
             "FIRST_ACQUISITION_SUCCESS_DT", "TREATMT_STRT_DT", "TREATMT_END_DT")
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
     .dropDuplicates(["CLNT_NO", "MNE"])
 )
 
@@ -94,21 +97,42 @@ acq_spending = (
     .withColumn("DAYS_SINCE_ACQ", F.datediff(F.col("TXN_DT"), F.col("FIRST_ACQUISITION_SUCCESS_DT")))
 )
 
+_acq_agg_cols = [
+    F.countDistinct("CLNT_NO").alias("clients_with_spend"),
+    F.count("*").alias("txn_count"),
+    F.sum("TXN_AMT").alias("total_spend"),
+    F.avg("TXN_AMT").alias("avg_txn_amt"),
+    (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
+    (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
+]
+
+# --- Per-cohort ---
+acq_summary_cohort = (
+    acq_spending
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .agg(*_acq_agg_cols)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD")
+)
+
+acq_total_cohort = acq_clients.groupBy("MNE", "COHORT", "TST_GRP_CD").agg(F.countDistinct("CLNT_NO").alias("total_acquirers"))
+
+acq_result_cohort = (
+    acq_total_cohort.join(acq_summary_cohort, ["MNE", "COHORT", "TST_GRP_CD"], "left")
+    .withColumn("pct_with_spend", F.col("clients_with_spend") / F.col("total_acquirers") * 100)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD")
+)
+
+print("\nPost-acquisition spending BY COHORT (within treatment window):")
+acq_result_cohort.show(100, truncate=False)
+
+# --- Overall (aggregate across cohorts) ---
 acq_summary = (
     acq_spending
     .groupBy("MNE", "TST_GRP_CD")
-    .agg(
-        F.countDistinct("CLNT_NO").alias("clients_with_spend"),
-        F.count("*").alias("txn_count"),
-        F.sum("TXN_AMT").alias("total_spend"),
-        F.avg("TXN_AMT").alias("avg_txn_amt"),
-        (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
-        (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
-    )
+    .agg(*_acq_agg_cols)
     .orderBy("MNE", "TST_GRP_CD")
 )
 
-# Total acquirers (including those with zero spend)
 acq_total = acq_clients.groupBy("MNE", "TST_GRP_CD").agg(F.countDistinct("CLNT_NO").alias("total_acquirers"))
 
 acq_result = (
@@ -117,7 +141,7 @@ acq_result = (
     .orderBy("MNE", "TST_GRP_CD")
 )
 
-print("\nPost-acquisition spending (within treatment window):")
+print("\nPost-acquisition spending OVERALL (within treatment window):")
 acq_result.show(20, truncate=False)
 
 
@@ -137,6 +161,7 @@ act_clients = (
     .filter(F.col("ACTIVATION_SUCCESS") == 1)
     .select("CLNT_NO", "MNE", "TST_GRP_CD",
             "FIRST_ACTIVATION_SUCCESS_DT", "TREATMT_STRT_DT", "TREATMT_END_DT")
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
     .dropDuplicates(["CLNT_NO", "MNE"])
 )
 
@@ -147,17 +172,38 @@ act_spending = (
     .filter(F.col("TXN_DT") <= F.col("TREATMT_END_DT"))
 )
 
+_act_agg_cols = [
+    F.countDistinct("CLNT_NO").alias("clients_with_spend"),
+    F.count("*").alias("txn_count"),
+    F.sum("TXN_AMT").alias("total_spend"),
+    F.avg("TXN_AMT").alias("avg_txn_amt"),
+    (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
+    (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
+]
+
+# --- Per-cohort ---
+act_summary_cohort = (
+    act_spending
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .agg(*_act_agg_cols)
+)
+
+act_total_cohort = act_clients.groupBy("MNE", "COHORT", "TST_GRP_CD").agg(F.countDistinct("CLNT_NO").alias("total_activators"))
+
+act_result_cohort = (
+    act_total_cohort.join(act_summary_cohort, ["MNE", "COHORT", "TST_GRP_CD"], "left")
+    .withColumn("pct_with_spend", F.col("clients_with_spend") / F.col("total_activators") * 100)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD")
+)
+
+print("\nPost-activation spending BY COHORT (within treatment window):")
+act_result_cohort.show(100, truncate=False)
+
+# --- Overall ---
 act_summary = (
     act_spending
     .groupBy("MNE", "TST_GRP_CD")
-    .agg(
-        F.countDistinct("CLNT_NO").alias("clients_with_spend"),
-        F.count("*").alias("txn_count"),
-        F.sum("TXN_AMT").alias("total_spend"),
-        F.avg("TXN_AMT").alias("avg_txn_amt"),
-        (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
-        (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
-    )
+    .agg(*_act_agg_cols)
 )
 
 act_total = act_clients.groupBy("MNE", "TST_GRP_CD").agg(F.countDistinct("CLNT_NO").alias("total_activators"))
@@ -168,7 +214,7 @@ act_result = (
     .orderBy("TST_GRP_CD")
 )
 
-print("\nPost-activation spending (within treatment window):")
+print("\nPost-activation spending OVERALL (within treatment window):")
 act_result.show(20, truncate=False)
 
 
@@ -191,16 +237,18 @@ prov_clients = (
     .select("CLNT_NO", "MNE", "TST_GRP_CD",
             "FIRST_PROVISIONING_SUCCESS_DT", "TREATMT_STRT_DT", "TREATMT_END_DT")
     .withColumn("WINDOW_DAYS", F.datediff(F.col("TREATMT_END_DT"), F.col("TREATMT_STRT_DT")))
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
     .dropDuplicates(["CLNT_NO", "MNE"])
 )
 
 prov_txn = prov_clients.join(pos_df, "CLNT_NO", "inner")
 
 # Pre: same duration before provisioning as treatment window
+# F.date_sub doesn't support Column for days arg on CDH Spark — use expr
 pre_prov = (
     prov_txn
     .filter(F.col("TXN_DT") < F.col("FIRST_PROVISIONING_SUCCESS_DT"))
-    .filter(F.col("TXN_DT") >= F.date_sub(F.col("FIRST_PROVISIONING_SUCCESS_DT"), F.col("WINDOW_DAYS")))
+    .filter(F.col("TXN_DT") >= F.expr("date_sub(FIRST_PROVISIONING_SUCCESS_DT, WINDOW_DAYS)"))
     .withColumn("PERIOD", F.lit("PRE"))
 )
 
@@ -214,25 +262,38 @@ post_prov = (
 
 prov_combined = pre_prov.unionByName(post_prov)
 
+_prov_agg_cols = [
+    F.countDistinct("CLNT_NO").alias("clients"),
+    F.count("*").alias("txn_count"),
+    F.sum("TXN_AMT").alias("total_spend"),
+    F.avg("TXN_AMT").alias("avg_txn_amt"),
+    (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
+    (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
+]
+
+# --- Per-cohort ---
+prov_summary_cohort = (
+    prov_combined
+    .groupBy("MNE", "COHORT", "TST_GRP_CD", "PERIOD")
+    .agg(*_prov_agg_cols)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD", "PERIOD")
+)
+
+print("\nPre vs Post provisioning spending BY COHORT:")
+prov_summary_cohort.show(100, truncate=False)
+
+# --- Overall ---
 prov_summary = (
     prov_combined
     .groupBy("MNE", "TST_GRP_CD", "PERIOD")
-    .agg(
-        F.countDistinct("CLNT_NO").alias("clients"),
-        F.count("*").alias("txn_count"),
-        F.sum("TXN_AMT").alias("total_spend"),
-        F.avg("TXN_AMT").alias("avg_txn_amt"),
-        (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
-        (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
-    )
+    .agg(*_prov_agg_cols)
     .orderBy("MNE", "TST_GRP_CD", "PERIOD")
 )
 
-print("\nPre vs Post provisioning spending:")
+print("\nPre vs Post provisioning spending OVERALL:")
 prov_summary.show(20, truncate=False)
 
-# --- Difference-in-Differences ---
-# Pivot to get PRE/POST side by side, then compute DiD
+# --- Difference-in-Differences (overall) ---
 prov_did = (
     prov_summary
     .groupBy("MNE", "TST_GRP_CD")
@@ -246,10 +307,27 @@ prov_did = (
     .orderBy("MNE", "TST_GRP_CD")
 )
 
-print("Pre vs Post change by test group:")
+print("Pre vs Post change by test group (OVERALL):")
 prov_did.show(20, truncate=False)
 
-# Compute DiD: Action change minus Control change
+# --- DiD per cohort ---
+prov_did_cohort = (
+    prov_summary_cohort
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .pivot("PERIOD", ["PRE", "POST"])
+    .agg(
+        F.first("avg_spend_per_client").alias("spend"),
+        F.first("avg_txn_per_client").alias("txn"),
+    )
+    .withColumn("spend_change", F.col("POST_spend") - F.col("PRE_spend"))
+    .withColumn("txn_change", F.col("POST_txn") - F.col("PRE_txn"))
+    .orderBy("MNE", "COHORT", "TST_GRP_CD")
+)
+
+print("Pre vs Post change by test group BY COHORT:")
+prov_did_cohort.show(100, truncate=False)
+
+# Compute DiD: Action change minus Control change (overall)
 for mne in ["VUT", "VAW"]:
     mne_data = prov_did.filter(F.col("MNE") == mne).collect()
     action = [r for r in mne_data if r.TST_GRP_CD.strip() == "TG4"]
@@ -258,11 +336,24 @@ for mne in ["VUT", "VAW"]:
         a, c = action[0], control[0]
         did_spend = float(a.spend_change or 0) - float(c.spend_change or 0)
         did_txn = float(a.txn_change or 0) - float(c.txn_change or 0)
-        print(f"\n{mne} Difference-in-Differences:")
+        print(f"\n{mne} Difference-in-Differences (OVERALL):")
         print(f"  Spend DiD: ${did_spend:,.2f} per client (causal campaign effect)")
         print(f"  Txn DiD:   {did_txn:,.2f} txns per client")
-        print(f"  Action pre→post: ${float(a.PRE_spend or 0):,.2f} → ${float(a.POST_spend or 0):,.2f}")
-        print(f"  Control pre→post: ${float(c.PRE_spend or 0):,.2f} → ${float(c.POST_spend or 0):,.2f}")
+        print(f"  Action pre->post: ${float(a.PRE_spend or 0):,.2f} -> ${float(a.POST_spend or 0):,.2f}")
+        print(f"  Control pre->post: ${float(c.PRE_spend or 0):,.2f} -> ${float(c.POST_spend or 0):,.2f}")
+
+# Compute DiD per cohort
+for mne in ["VUT", "VAW"]:
+    cohort_data = prov_did_cohort.filter(F.col("MNE") == mne).collect()
+    cohorts = sorted(set(r.COHORT for r in cohort_data))
+    print(f"\n{mne} Difference-in-Differences BY COHORT:")
+    for cohort in cohorts:
+        action = [r for r in cohort_data if r.COHORT == cohort and r.TST_GRP_CD.strip() == "TG4"]
+        control = [r for r in cohort_data if r.COHORT == cohort and r.TST_GRP_CD.strip() == "TG7"]
+        if action and control:
+            a, c = action[0], control[0]
+            did_spend = float(a.spend_change or 0) - float(c.spend_change or 0)
+            print(f"  {cohort}: Spend DiD = ${did_spend:,.2f}/client")
 
 
 # ============================================================
@@ -281,22 +372,36 @@ wallet_all = (
     .select("CLNT_NO", "MNE", "TST_GRP_CD",
             "PROVISIONING_SUCCESS", "USAGE_SUCCESS",
             "TREATMT_STRT_DT", "TREATMT_END_DT")
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
     .dropDuplicates(["CLNT_NO", "MNE"])
 )
 
-# Usage rate by provisioning status
+_wallet_usage_agg = [
+    F.count("*").alias("clients"),
+    F.sum("USAGE_SUCCESS").alias("usage_successes"),
+    (F.sum("USAGE_SUCCESS") / F.count("*") * 100).alias("usage_rate_pct"),
+]
+
+# --- Per-cohort ---
+wallet_usage_cohort = (
+    wallet_all
+    .groupBy("MNE", "COHORT", "TST_GRP_CD", "PROVISIONING_SUCCESS")
+    .agg(*_wallet_usage_agg)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD", "PROVISIONING_SUCCESS")
+)
+
+print("\nUsage rate by provisioning status BY COHORT:")
+wallet_usage_cohort.show(100, truncate=False)
+
+# --- Overall ---
 wallet_usage = (
     wallet_all
     .groupBy("MNE", "TST_GRP_CD", "PROVISIONING_SUCCESS")
-    .agg(
-        F.count("*").alias("clients"),
-        F.sum("USAGE_SUCCESS").alias("usage_successes"),
-        (F.sum("USAGE_SUCCESS") / F.count("*") * 100).alias("usage_rate_pct"),
-    )
+    .agg(*_wallet_usage_agg)
     .orderBy("MNE", "TST_GRP_CD", "PROVISIONING_SUCCESS")
 )
 
-print("\nUsage rate by provisioning status:")
+print("\nUsage rate by provisioning status OVERALL:")
 wallet_usage.show(20, truncate=False)
 
 # Spending comparison: provisioned vs not provisioned
@@ -307,34 +412,171 @@ wallet_spend = (
     .filter(F.col("TXN_DT") <= F.col("TREATMT_END_DT"))
 )
 
+_wallet_spend_agg = [
+    F.countDistinct("CLNT_NO").alias("clients_with_spend"),
+    F.sum("TXN_AMT").alias("total_spend"),
+    (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
+    (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
+]
+
+# --- Per-cohort ---
+wallet_spend_summary_cohort = (
+    wallet_spend
+    .groupBy("MNE", "COHORT", "TST_GRP_CD", "PROVISIONING_SUCCESS")
+    .agg(*_wallet_spend_agg)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD", "PROVISIONING_SUCCESS")
+)
+
+print("\nSpending by provisioning status BY COHORT (within treatment window):")
+wallet_spend_summary_cohort.show(100, truncate=False)
+
+# --- Overall ---
 wallet_spend_summary = (
     wallet_spend
     .groupBy("MNE", "TST_GRP_CD", "PROVISIONING_SUCCESS")
-    .agg(
-        F.countDistinct("CLNT_NO").alias("clients_with_spend"),
-        F.sum("TXN_AMT").alias("total_spend"),
-        (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
-        (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
-    )
+    .agg(*_wallet_spend_agg)
     .orderBy("MNE", "TST_GRP_CD", "PROVISIONING_SUCCESS")
 )
 
-print("\nSpending by provisioning status (within treatment window):")
+print("\nSpending by provisioning status OVERALL (within treatment window):")
 wallet_spend_summary.show(20, truncate=False)
+
+
+# ============================================================
+# CELL 5b: PER-COHORT SUCCESS SUMMARY WITH SIGNIFICANCE
+# Final success rate per MNE x COHORT — the "end of curve" result.
+# Uses proportions z-test (scipy if available, manual fallback).
+# ============================================================
+
+print("=" * 60)
+print("PER-COHORT SUCCESS SUMMARY WITH SIGNIFICANCE")
+print("=" * 60)
+
+# Campaign -> primary success column mapping
+CAMPAIGN_SUCCESS_FLAG = {
+    "VCN": "ACQUISITION_SUCCESS",
+    "VDA": "ACQUISITION_SUCCESS",
+    "VDT": "ACTIVATION_SUCCESS",
+    "VUI": "USAGE_SUCCESS",
+    "VUT": "PROVISIONING_SUCCESS",
+    "VAW": "PROVISIONING_SUCCESS",
+}
+
+# Build per-cohort success rates
+cohort_rates = (
+    result_df
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
+    .select("CLNT_NO", "MNE", "TST_GRP_CD", "COHORT", "SUCCESS")
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .agg(
+        F.count("*").alias("clients"),
+        F.sum("SUCCESS").alias("successes"),
+        (F.sum("SUCCESS") / F.count("*")).alias("success_rate"),
+    )
+    .orderBy("MNE", "COHORT", "TST_GRP_CD")
+)
+
+cohort_rates_collected = cohort_rates.collect()
+
+# Significance testing
+import math
+
+try:
+    from scipy.stats import proportions_ztest
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
+print(f"scipy available: {_HAS_SCIPY}")
+
+# Group by MNE + COHORT, compute lift + p-value
+cohort_summary_rows = []
+mne_cohort_pairs = sorted(set((r.MNE, r.COHORT) for r in cohort_rates_collected))
+
+for mne, cohort in mne_cohort_pairs:
+    action_rows = [r for r in cohort_rates_collected
+                   if r.MNE == mne and r.COHORT == cohort and r.TST_GRP_CD.strip() == "TG4"]
+    control_rows = [r for r in cohort_rates_collected
+                    if r.MNE == mne and r.COHORT == cohort and r.TST_GRP_CD.strip() == "TG7"]
+
+    if not action_rows or not control_rows:
+        continue
+
+    a = action_rows[0]
+    c = control_rows[0]
+
+    a_n, a_s = int(a.clients), int(a.successes)
+    c_n, c_s = int(c.clients), int(c.successes)
+    a_rate = a_s / a_n if a_n > 0 else 0.0
+    c_rate = c_s / c_n if c_n > 0 else 0.0
+    abs_lift = a_rate - c_rate
+
+    # Significance test
+    if _HAS_SCIPY and a_n > 0 and c_n > 0:
+        _, p_val = proportions_ztest([a_s, c_s], [a_n, c_n], alternative='two-sided')
+    elif a_n > 0 and c_n > 0:
+        # Manual z-test fallback
+        p_pool = (a_s + c_s) / (a_n + c_n)
+        if p_pool > 0 and p_pool < 1:
+            se = math.sqrt(p_pool * (1 - p_pool) * (1.0 / a_n + 1.0 / c_n))
+            z = abs_lift / se if se > 0 else 0.0
+            # Two-tailed p-value approximation
+            p_val = 2 * (1 - 0.5 * (1 + math.erf(abs(z) / math.sqrt(2))))
+        else:
+            p_val = 1.0
+    else:
+        p_val = 1.0
+
+    sig_flag = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else ""
+    incremental = int(abs_lift * a_n) if abs_lift > 0 else 0
+
+    cohort_summary_rows.append((
+        mne, cohort,
+        float(a_rate), float(c_rate), float(abs_lift),
+        float(p_val), sig_flag,
+        a_n, c_n, incremental
+    ))
+
+# Build summary DF
+if cohort_summary_rows:
+    cohort_summary_df = spark.createDataFrame(
+        cohort_summary_rows,
+        ["MNE", "COHORT", "action_rate", "control_rate", "abs_lift",
+         "p_value", "significance", "action_n", "control_n", "incremental_clients"]
+    )
+
+    print("\nPer-cohort success summary:")
+    cohort_summary_df.orderBy("MNE", "COHORT").show(200, truncate=False)
+
+    # Overall summary (aggregate across cohorts) for comparison
+    print("\nOverall success rates (for reference):")
+    overall_rates = (
+        result_df
+        .groupBy("MNE", "TST_GRP_CD")
+        .agg(
+            F.count("*").alias("clients"),
+            F.sum("SUCCESS").alias("successes"),
+            (F.sum("SUCCESS") / F.count("*") * 100).alias("success_rate_pct"),
+        )
+        .orderBy("MNE", "TST_GRP_CD")
+    )
+    overall_rates.show(20, truncate=False)
+else:
+    print("No cohort data to summarize.")
 
 
 # ============================================================
 # CELL 6: SPEND VELOCITY CURVES
 # Cumulative average spend over days since success.
 # Like vintage curves but for dollars, not success rate.
-# One curve per campaign x test group.
+# One curve per campaign x cohort x test group.
 # ============================================================
 
 print("=" * 60)
 print("SPEND VELOCITY CURVES")
 print("=" * 60)
 
-# Build per-campaign: days since success → cumulative avg spend
+# Build per-campaign: days since success -> cumulative avg spend
 CAMPAIGN_SUCCESS_COL = {
     "VCN": "FIRST_ACQUISITION_SUCCESS_DT",
     "VDA": "FIRST_ACQUISITION_SUCCESS_DT",
@@ -351,7 +593,9 @@ for mne, date_col in CAMPAIGN_SUCCESS_COL.items():
     mne_clients = (
         result_df
         .filter((F.col("MNE") == mne) & (F.col("SUCCESS") == 1))
-        .select("CLNT_NO", "MNE", "TST_GRP_CD", F.col(date_col).alias("SUCCESS_DT"), "TREATMT_END_DT")
+        .select("CLNT_NO", "MNE", "TST_GRP_CD", F.col(date_col).alias("SUCCESS_DT"),
+                "TREATMT_STRT_DT", "TREATMT_END_DT")
+        .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
         .dropDuplicates(["CLNT_NO", "MNE"])
     )
 
@@ -365,30 +609,30 @@ for mne, date_col in CAMPAIGN_SUCCESS_COL.items():
     # Cumulative spend per client per day
     client_daily = (
         mne_spend
-        .groupBy("MNE", "TST_GRP_CD", "CLNT_NO", "DAY")
+        .groupBy("MNE", "COHORT", "TST_GRP_CD", "CLNT_NO", "DAY")
         .agg(F.sum("TXN_AMT").alias("daily_spend"))
     )
 
     # Total clients per group (denominator — includes those with zero spend)
-    total_clients = mne_clients.groupBy("MNE", "TST_GRP_CD").agg(F.countDistinct("CLNT_NO").alias("total_clients"))
+    total_clients = mne_clients.groupBy("MNE", "COHORT", "TST_GRP_CD").agg(F.countDistinct("CLNT_NO").alias("total_clients"))
 
     # Cumulative: sum all spend up to each day, divide by total clients
     day_agg = (
         client_daily
-        .groupBy("MNE", "TST_GRP_CD", "DAY")
+        .groupBy("MNE", "COHORT", "TST_GRP_CD", "DAY")
         .agg(F.sum("daily_spend").alias("day_total_spend"))
         .orderBy("DAY")
     )
 
-    # Running cumulative sum
-    w = Window.partitionBy("MNE", "TST_GRP_CD").orderBy("DAY").rowsBetween(Window.unboundedPreceding, Window.currentRow)
+    # Running cumulative sum — partitioned by cohort too
+    w = Window.partitionBy("MNE", "COHORT", "TST_GRP_CD").orderBy("DAY").rowsBetween(Window.unboundedPreceding, Window.currentRow)
     day_cum = day_agg.withColumn("cum_spend", F.sum("day_total_spend").over(w))
 
     # Join total_clients for per-client average
     day_cum = (
-        day_cum.join(total_clients, ["MNE", "TST_GRP_CD"])
+        day_cum.join(total_clients, ["MNE", "COHORT", "TST_GRP_CD"])
         .withColumn("avg_cum_spend_per_client", F.col("cum_spend") / F.col("total_clients"))
-        .select("MNE", "TST_GRP_CD", "DAY", "avg_cum_spend_per_client", "total_clients")
+        .select("MNE", "COHORT", "TST_GRP_CD", "DAY", "avg_cum_spend_per_client", "total_clients")
     )
 
     velocity_parts.append(day_cum)
@@ -405,15 +649,15 @@ for milestone in [7, 14, 30, 60, 90]:
     (
         velocity_df
         .filter(F.col("DAY") == milestone)
-        .orderBy("MNE", "TST_GRP_CD")
-        .show(20, truncate=False)
+        .orderBy("MNE", "COHORT", "TST_GRP_CD")
+        .show(100, truncate=False)
     )
 
 # Save velocity curves for charting
 velocity_pd = velocity_df.toPandas()
 print(f"\nVelocity curve data: {len(velocity_pd):,} rows")
-print("Columns: MNE, TST_GRP_CD, DAY, avg_cum_spend_per_client, total_clients")
-print("Use this for Plotly/matplotlib line charts (Action vs Control per campaign)")
+print("Columns: MNE, COHORT, TST_GRP_CD, DAY, avg_cum_spend_per_client, total_clients")
+print("Use this for Plotly/matplotlib line charts (Action vs Control per campaign per cohort)")
 
 
 # ============================================================
