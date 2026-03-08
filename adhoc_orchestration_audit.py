@@ -143,21 +143,45 @@ download_csv(cum_dist_pd, "vvd_v2_cumulative_conversions.csv")
 # CELL 3: ALREADY-SUCCEEDED WASTE
 # Clients who already achieved their campaign's goal but keep
 # getting contacted by the same campaign. Split by channel.
+#
+# Uses ACTUAL success date (FIRST_*_DT), not TREATMT_STRT_DT.
+# MNE → success date column mapping:
+#   VCN/VDA → FIRST_ACQUISITION_SUCCESS_DT
+#   VDT     → FIRST_ACTIVATION_SUCCESS_DT
+#   VUI     → FIRST_USAGE_SUCCESS_DT
+#   VUT/VAW → FIRST_PROVISIONING_SUCCESS_DT
 # ============================================================
 
+# Map each MNE to its actual success date column
+MNE_SUCCESS_DT = {
+    "VCN": "FIRST_ACQUISITION_SUCCESS_DT",
+    "VDA": "FIRST_ACQUISITION_SUCCESS_DT",
+    "VDT": "FIRST_ACTIVATION_SUCCESS_DT",
+    "VUI": "FIRST_USAGE_SUCCESS_DT",
+    "VUT": "FIRST_PROVISIONING_SUCCESS_DT",
+    "VAW": "FIRST_PROVISIONING_SUCCESS_DT",
+}
+
+# For each row, pick the actual success date based on MNE
+actual_success_expr = F.lit(None).cast("date")
+for mne, dt_col in MNE_SUCCESS_DT.items():
+    actual_success_expr = F.when(
+        (F.col("MNE") == mne) & (F.col("SUCCESS") == 1),
+        F.col(dt_col)
+    ).otherwise(actual_success_expr)
+
+action_with_dt = action_df.withColumn("actual_success_dt", actual_success_expr)
+
+# Per client × campaign: find earliest ACTUAL success date
 w_first_success = (
     Window.partitionBy("CLNT_NO", "MNE")
-    .orderBy("TREATMT_STRT_DT")
     .rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
 )
 
-tagged = (
-    action_df
-    .withColumn("first_success_dt",
-        F.min(F.when(F.col("SUCCESS") == 1, F.col("TREATMT_STRT_DT")))
-         .over(w_first_success))
-)
+tagged = action_with_dt.withColumn("first_success_dt",
+    F.min("actual_success_dt").over(w_first_success))
 
+# Waste = deployments that START after the client's first actual success date
 post_success = tagged.filter(
     (F.col("first_success_dt").isNotNull()) &
     (F.col("TREATMT_STRT_DT") > F.col("first_success_dt"))
@@ -240,6 +264,216 @@ print(f"\nSUMMARY:")
 print(f"  Total post-success wasted deployments: {int(total_waste):,}")
 print(f"  Email channel (HIGH severity):         {int(em_waste):,} ({em_waste/total_waste*100:.1f}%)")
 print(f"  MB channel (LOW severity):             {int(mb_waste):,} ({mb_waste/total_waste*100:.1f}%)")
+
+
+# ============================================================
+# CELL 3b: POST-SUCCESS WASTE — GRANULAR EVIDENCE
+# Show specific clients: success date, subsequent deployment
+# dates, gap in days. Proves (or disproves) the waste claim.
+# ============================================================
+
+# Add gap: days between first success and each wasted deployment
+post_success_detail = (
+    post_success
+    .withColumn("gap_days",
+        F.datediff(F.col("TREATMT_STRT_DT"), F.col("first_success_dt")))
+    .select("CLNT_NO", "MNE", "TACTIC_CELL_CD", "RPT_GRP_CD",
+            "first_success_dt", "TREATMT_STRT_DT", "TREATMT_END_DT",
+            "gap_days", "SUCCESS", "COHORT")
+)
+
+# --- Gap distribution: how many days between success and wasted deployment? ---
+print("=" * 75)
+print("POST-SUCCESS WASTE — GAP DISTRIBUTION (days between success and next deploy)")
+print("=" * 75)
+
+for mne in ["VDT", "VCN", "VDA", "VUI", "VUT", "VAW"]:
+    mne_waste = post_success_detail.filter(F.col("MNE") == mne)
+    cnt = mne_waste.count()
+    if cnt == 0:
+        continue
+
+    gap_dist = (
+        mne_waste
+        .withColumn("gap_bucket",
+            F.when(F.col("gap_days") <= 0, "same_day")
+             .when(F.col("gap_days").between(1, 3), "1-3d")
+             .when(F.col("gap_days").between(4, 7), "4-7d")
+             .when(F.col("gap_days").between(8, 14), "8-14d")
+             .when(F.col("gap_days").between(15, 30), "15-30d")
+             .when(F.col("gap_days").between(31, 60), "31-60d")
+             .otherwise("60d+")
+        )
+        .groupBy("gap_bucket")
+        .agg(
+            F.count("*").alias("deployments"),
+            F.countDistinct("CLNT_NO").alias("clients"),
+        )
+        .orderBy("gap_bucket")
+    )
+
+    print(f"\n{mne} — {cnt:,} post-success deployments:")
+    print(f"  {'Gap':>10} {'Deploys':>10} {'Clients':>10}")
+    print(f"  {'-'*34}")
+    for r in gap_dist.collect():
+        print(f"  {str(r.gap_bucket):>10} {int(r.deployments):>10,} {int(r.clients):>10,}")
+
+# --- Sample clients: show 10 per campaign with full timeline ---
+print(f"\n{'='*75}")
+print("SAMPLE CLIENTS — Post-success deployment evidence")
+print("=" * 75)
+
+for mne in ["VDT", "VCN"]:
+    mne_waste = post_success_detail.filter(F.col("MNE") == mne)
+    if mne_waste.count() == 0:
+        continue
+
+    # Pick 10 clients with the most wasted deployments
+    top_clients = (
+        mne_waste
+        .groupBy("CLNT_NO")
+        .agg(F.count("*").alias("wasted_count"))
+        .orderBy(F.desc("wasted_count"))
+        .limit(10)
+        .select("CLNT_NO")
+    )
+
+    sample = (
+        mne_waste
+        .join(top_clients, "CLNT_NO", "left_semi")
+        .orderBy("CLNT_NO", "TREATMT_STRT_DT")
+    )
+
+    print(f"\n{mne} — Top 10 clients with most post-success deployments:")
+    print(f"  {'CLNT_NO':>12} {'Channel':<8} {'Success_DT':>12} {'Deploy_DT':>12} "
+          f"{'Gap_Days':>8} {'Still_Success?':>14}")
+    print(f"  {'-'*70}")
+    for r in sample.collect():
+        print(f"  {str(r.CLNT_NO):>12} {str(r.TACTIC_CELL_CD):<8} "
+              f"{str(r.first_success_dt):>12} {str(r.TREATMT_STRT_DT):>12} "
+              f"{int(r.gap_days):>8}d {int(r.SUCCESS):>14}")
+
+# Export full detail for audit trail
+post_success_evidence_pd = (
+    post_success_detail
+    .orderBy("MNE", "CLNT_NO", "TREATMT_STRT_DT")
+    .toPandas()
+)
+download_csv(post_success_evidence_pd, "vvd_v2_post_success_evidence.csv")
+
+
+# ============================================================
+# CELL 3c: VUT/VAW OVERLAP EVIDENCE
+# Clients targeted by both VUT and VAW. Shows gap, which
+# succeeded, attribution problem.
+# ============================================================
+
+vut_clients = (
+    action_df.filter(F.col("MNE") == "VUT")
+    .select(
+        F.col("CLNT_NO"),
+        F.col("TREATMT_STRT_DT").alias("VUT_DT"),
+        F.col("TREATMT_END_DT").alias("VUT_END_DT"),
+        F.col("SUCCESS").alias("VUT_SUCCESS"),
+        F.col("TACTIC_CELL_CD").alias("VUT_CHANNEL"),
+    )
+)
+
+vaw_clients = (
+    action_df.filter(F.col("MNE") == "VAW")
+    .select(
+        F.col("CLNT_NO"),
+        F.col("TREATMT_STRT_DT").alias("VAW_DT"),
+        F.col("TREATMT_END_DT").alias("VAW_END_DT"),
+        F.col("SUCCESS").alias("VAW_SUCCESS"),
+        F.col("TACTIC_CELL_CD").alias("VAW_CHANNEL"),
+    )
+)
+
+overlap = vut_clients.join(vaw_clients, "CLNT_NO")
+overlap = overlap.withColumn("gap_days",
+    F.abs(F.datediff(F.col("VAW_DT"), F.col("VUT_DT"))))
+
+overlap_count = overlap.select("CLNT_NO").distinct().count()
+total_overlaps = overlap.count()
+
+print("=" * 75)
+print("VUT / VAW OVERLAP — Clients targeted by both provisioning campaigns")
+print("=" * 75)
+print(f"Clients in both VUT and VAW: {overlap_count:,}")
+print(f"Total overlapping deployment pairs: {total_overlaps:,}")
+
+# Gap distribution
+print(f"\nGap between VUT and VAW deployments:")
+overlap_gap = (
+    overlap
+    .withColumn("gap_bucket",
+        F.when(F.col("gap_days") <= 7, "0-7d")
+         .when(F.col("gap_days").between(8, 14), "8-14d")
+         .when(F.col("gap_days").between(15, 30), "15-30d")
+         .when(F.col("gap_days").between(31, 60), "31-60d")
+         .otherwise("60d+")
+    )
+    .groupBy("gap_bucket")
+    .agg(
+        F.count("*").alias("pairs"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+    )
+    .orderBy("gap_bucket")
+    .collect()
+)
+
+print(f"  {'Gap':>8} {'Pairs':>10} {'Clients':>10}")
+print(f"  {'-'*32}")
+for r in overlap_gap:
+    print(f"  {str(r.gap_bucket):>8} {int(r.pairs):>10,} {int(r.clients):>10,}")
+
+# Attribution: who succeeded?
+print(f"\nAttribution pattern:")
+attr = (
+    overlap
+    .withColumn("pattern",
+        F.when((F.col("VUT_SUCCESS") == 1) & (F.col("VAW_SUCCESS") == 1), "BOTH_SUCCESS")
+         .when((F.col("VUT_SUCCESS") == 1) & (F.col("VAW_SUCCESS") == 0), "VUT_ONLY")
+         .when((F.col("VUT_SUCCESS") == 0) & (F.col("VAW_SUCCESS") == 1), "VAW_ONLY")
+         .otherwise("NEITHER")
+    )
+    .groupBy("pattern")
+    .agg(
+        F.count("*").alias("pairs"),
+        F.countDistinct("CLNT_NO").alias("clients"),
+    )
+    .orderBy(F.desc("pairs"))
+    .collect()
+)
+
+print(f"  {'Pattern':<16} {'Pairs':>10} {'Clients':>10}")
+print(f"  {'-'*38}")
+for r in attr:
+    print(f"  {str(r.pattern):<16} {int(r.pairs):>10,} {int(r.clients):>10,}")
+
+# Sample: 10 clients with both successes (attribution problem)
+print(f"\nSample clients with BOTH successes (attribution conflict):")
+both_success = (
+    overlap
+    .filter(F.col("VUT_SUCCESS") == 1)
+    .filter(F.col("VAW_SUCCESS") == 1)
+    .orderBy("gap_days")
+    .limit(10)
+    .collect()
+)
+
+if both_success:
+    print(f"  {'CLNT_NO':>12} {'VUT_DT':>12} {'VUT_Ch':<8} {'VAW_DT':>12} {'VAW_Ch':<8} {'Gap':>6}")
+    print(f"  {'-'*62}")
+    for r in both_success:
+        print(f"  {str(r.CLNT_NO):>12} {str(r.VUT_DT):>12} {str(r.VUT_CHANNEL):<8} "
+              f"{str(r.VAW_DT):>12} {str(r.VAW_CHANNEL):<8} {int(r.gap_days):>5}d")
+else:
+    print("  (No clients with both successes found)")
+
+overlap_pd = overlap.orderBy("CLNT_NO", "VUT_DT", "VAW_DT").limit(10000).toPandas()
+download_csv(overlap_pd, "vvd_v2_vut_vaw_overlap.csv")
 
 
 # ============================================================
