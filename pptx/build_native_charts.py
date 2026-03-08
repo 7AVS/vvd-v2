@@ -1,18 +1,17 @@
 # build_native_charts.py
-# Builds PowerPoint with native editable line charts (right-click → Edit Data to see tables).
+# Builds PowerPoint with native editable line charts (right-click -> Edit Data to see tables).
 #
 # Dependencies: pip install python-pptx
 #
-# Input files:
+# Input file:
 #   - vintage_curves.csv (REQUIRED) — from pipeline Cell 10
 #     Columns: MNE, COHORT, TST_GRP_CD, RPT_GRP_CD, METRIC, DAY, WINDOW_DAYS, CLIENT_CNT, SUCCESS_CNT, RATE
-#   - mega_output.csv (REQUIRED) — from pipeline Cell 5.5
-#     Uses ALL/ALL rollup rows for campaign-level lift and p_value
-#     Key columns: MNE, COHORT, RPT_GRP_CD, abs_lift_pp, p_value
+#     RATE is already cumulative (SUCCESS_CNT/CLIENT_CNT * 100). Used directly as Y value.
 #
 # Output: VVD_v2_NativeCharts.pptx
 
 import csv
+import math
 from collections import defaultdict
 
 from pptx import Presentation
@@ -26,7 +25,6 @@ from pptx.dml.color import RGBColor
 # EDIT THESE PATHS before running
 # ============================================================
 INPUT_VINTAGE = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\PVD_P2_vintage_curves.csv"
-INPUT_MEGA    = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\vvd_v2_mega_output.csv"
 OUTPUT_PPTX   = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\VVD_v2_NativeCharts.pptx"
 # ============================================================
 
@@ -40,18 +38,23 @@ CAMPAIGN_META = {
     "VUT": ("Tokenization", "Wallet Provisioning"),
     "VAW": ("Add To Wallet", "Wallet Provisioning"),
 }
-COHORTS = ["2024Q3", "2024Q4", "2025Q1", "2025Q2"]
+PRIMARY_METRIC = {
+    "VCN": "card_acquisition",
+    "VDA": "card_acquisition",
+    "VDT": "card_activation",
+    "VUI": "card_usage",
+    "VUT": "wallet_provisioning",
+    "VAW": "wallet_provisioning",
+}
 MAX_DAYS = {"VDA": 30, "VDT": 30, "VAW": 30}
 
 # --- color palette ---
-# Same color for Action + Control (dashed differentiates Control)
-# Top 3 most recent cohorts get distinct intensities, older = light background shade
 COHORT_COLORS_RANKED = [
     RGBColor(0, 49, 104),    # rank 1 (most recent) — darkest
     RGBColor(0, 106, 198),   # rank 2 — bright blue
     RGBColor(91, 155, 213),  # rank 3 — medium blue
 ]
-COHORT_COLOR_OLD = RGBColor(190, 210, 230)  # all older cohorts — light background shade
+COHORT_COLOR_OLD = RGBColor(190, 210, 230)
 
 
 def get_cohort_color(cohort, cohorts_sorted):
@@ -59,16 +62,6 @@ def get_cohort_color(cohort, cohorts_sorted):
     if rank < len(COHORT_COLORS_RANKED):
         return COHORT_COLORS_RANKED[rank]
     return COHORT_COLOR_OLD
-
-# --- load campaign summary from mega output (ALL/ALL rollup rows) ---
-summary = {}
-with open(INPUT_MEGA, newline="") as f:
-    for row in csv.DictReader(f):
-        if row["COHORT"] == "ALL" and row["RPT_GRP_CD"] == "ALL":
-            summary[row["MNE"]] = {
-                "lift": float(row["abs_lift_pp"]),
-                "p_value": float(row["p_value"]),
-            }
 
 
 def sig_label(p):
@@ -81,24 +74,65 @@ def sig_label(p):
     return "n.s."
 
 
-# --- load vintage curves and compute cumulative rates ---
-# key: (MNE, COHORT, TST_GRP_CD) -> sorted list of (day, cumulative_rate)
+def z_test_proportions(rate_a, n_a, rate_b, n_b):
+    """Two-proportion z-test. Returns p-value using math.erfc (no scipy)."""
+    p_a = rate_a / 100.0
+    p_b = rate_b / 100.0
+    p_pool = (p_a * n_a + p_b * n_b) / (n_a + n_b)
+    if p_pool <= 0 or p_pool >= 1:
+        return 1.0
+    se = math.sqrt(p_pool * (1 - p_pool) * (1.0 / n_a + 1.0 / n_b))
+    if se == 0:
+        return 1.0
+    z = abs(p_a - p_b) / se
+    return math.erfc(z / math.sqrt(2))
+
+
+# --- load vintage curves, filtering to primary metric only ---
+# key: (MNE, COHORT, TST_GRP_CD) -> sorted list of (day, rate, client_cnt)
 raw = defaultdict(list)
 with open(INPUT_VINTAGE, newline="") as f:
     for row in csv.DictReader(f):
-        key = (row["MNE"], row["COHORT"], row["TST_GRP_CD"])
-        raw[key].append((int(row["DAY"]), int(row["SUCCESS_CNT"]), int(row["CLIENT_CNT"])))
+        mne = row["MNE"]
+        if row["METRIC"] != PRIMARY_METRIC.get(mne, ""):
+            continue
+        key = (mne, row["COHORT"], row["TST_GRP_CD"])
+        raw[key].append((int(row["DAY"]), float(row["RATE"]), int(row["CLIENT_CNT"])))
 
+# RATE is already cumulative — use directly
 curves = {}
 for key, records in raw.items():
     records.sort(key=lambda r: r[0])
-    cum_success = 0
-    client_cnt = records[0][2]
-    result = []
-    for day, cnt, _ in records:
-        cum_success += cnt
-        result.append((day, round(cum_success / client_cnt * 100, 4)))
-    curves[key] = result
+    curves[key] = [(day, rate, client_cnt) for day, rate, client_cnt in records]
+
+# auto-detect cohorts per campaign, sorted chronologically
+campaign_cohorts = defaultdict(set)
+for (mne, cohort, grp) in curves:
+    campaign_cohorts[mne].add(cohort)
+for mne in campaign_cohorts:
+    campaign_cohorts[mne] = sorted(campaign_cohorts[mne])
+
+# --- compute lift and p-value from latest cohort's final day ---
+summary = {}
+for mne in CAMPAIGNS:
+    cohorts = campaign_cohorts.get(mne, [])
+    if not cohorts:
+        summary[mne] = {"lift": 0.0, "p_value": 1.0}
+        continue
+    latest = cohorts[-1]
+    max_day = MAX_DAYS.get(mne, 90)
+    action_key = (mne, latest, "TG4")
+    control_key = (mne, latest, "TG7")
+    action_pts = [(d, r, n) for d, r, n in curves.get(action_key, []) if d <= max_day]
+    control_pts = [(d, r, n) for d, r, n in curves.get(control_key, []) if d <= max_day]
+    if action_pts and control_pts:
+        _, rate_a, n_a = action_pts[-1]
+        _, rate_b, n_b = control_pts[-1]
+        lift = rate_a - rate_b
+        p_val = z_test_proportions(rate_a, n_a, rate_b, n_b)
+    else:
+        lift, p_val = 0.0, 1.0
+    summary[mne] = {"lift": lift, "p_value": p_val}
 
 # --- build presentation ---
 prs = Presentation()
@@ -129,8 +163,8 @@ for mne in CAMPAIGNS:
     lift = info["lift"]
     p_val = info["p_value"]
     sig = sig_label(p_val)
-    is_significant = p_val < 0.05
     full_name, metric = CAMPAIGN_META[mne]
+    cohorts = campaign_cohorts.get(mne, [])
 
     lift_str = f"+{lift:.2f}" if lift >= 0 else f"{lift:.2f}"
     title_text = f"{mne} — {full_name} | {metric} | {lift_str}pp {sig}"
@@ -147,13 +181,12 @@ for mne in CAMPAIGNS:
     p.font.bold = True
     p.font.color.rgb = RGBColor(0, 49, 104)
 
-    # determine max day for this campaign
     max_day = MAX_DAYS.get(mne, 90)
-    for cohort in COHORTS:
+    for cohort in cohorts:
         for grp in ["TG4", "TG7"]:
             key = (mne, cohort, grp)
             if key in curves:
-                curves[key] = [(d, r) for d, r in curves[key] if d <= max_day]
+                curves[key] = [(d, r, n) for d, r, n in curves[key] if d <= max_day]
 
     categories = [str(d) for d in range(max_day + 1)]
 
@@ -161,12 +194,12 @@ for mne in CAMPAIGNS:
     chart_data.categories = categories
 
     series_order = []
-    for cohort in COHORTS:
+    for cohort in cohorts:
         for grp, label in [("TG4", "Action"), ("TG7", "Control")]:
             series_name = f"{cohort} {label}"
             key = (mne, cohort, grp)
             if key in curves:
-                day_map = {str(d): r for d, r in curves[key]}
+                day_map = {str(d): r for d, r, n in curves[key]}
                 values = [day_map.get(str(d), None) for d in range(max_day + 1)]
             else:
                 values = [None] * (max_day + 1)
@@ -212,7 +245,7 @@ for mne in CAMPAIGNS:
         series = plot.series[idx]
         series.smooth = True
 
-        color = get_cohort_color(cohort, COHORTS)
+        color = get_cohort_color(cohort, cohorts)
         series.format.line.color.rgb = color
         series.format.line.width = Pt(1.5)
         series.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH if grp == "TG7" else MSO_LINE_DASH_STYLE.SOLID
