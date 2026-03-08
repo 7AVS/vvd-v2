@@ -56,7 +56,7 @@ NOSIG_COLOR = '#D0D0D0'
 WARN_COLOR = C['sunburst']
 
 FONT = 'Segoe UI'
-W, H = 900, 500
+W, H = 1050, 520
 
 CAMPAIGN_META = {
     'VCN': {'name': 'Contextual Notification', 'goal': 'Card Acquisition',
@@ -105,8 +105,8 @@ def base_layout(**overrides):
         template='plotly_white',
         font=dict(family=FONT, size=13, color=C['black']),
         width=W, height=H,
-        margin=dict(l=60, r=40, t=100, b=80),
-        legend=dict(x=1, y=1, xanchor='right', yanchor='top',
+        margin=dict(l=60, r=120, t=80, b=90),
+        legend=dict(x=0.98, y=0.98, xanchor='right', yanchor='top',
                     bgcolor='rgba(255,255,255,0.85)',
                     bordercolor='#ddd', borderwidth=1, font=dict(size=11)),
     )
@@ -159,15 +159,15 @@ for stage in funnel_stages:
         textfont=dict(size=11),
     ))
 
-# Annotations: channel, split, cadence on the right side
+# Annotations: channel, split, cadence below each bar label
 for i, r in overview.iterrows():
     label = f"{r['mne']} — {r['name']}"
     fig2.add_annotation(
         x=0, y=label,
-        text=f"  {r['channel']} | {r['split']} | {r['cadence']}",
+        text=f"{r['channel']} | {r['split']} | {r['cadence']}",
         showarrow=False, xanchor='left',
-        font=dict(size=10, color=C['gray']),
-        xref='paper', xshift=-55, yshift=-14,
+        font=dict(size=9, color=C['gray']),
+        yshift=-16,
     )
 
 fig2.update_layout(
@@ -176,12 +176,17 @@ fig2.update_layout(
             text='VVD Campaign Portfolio — 6 campaigns across the cardholder lifecycle',
             font=dict(size=18, color=C['dark_blue']),
         ),
-        height=420,
+        height=460,
+        margin=dict(l=60, r=40, t=100, b=80),
         xaxis=dict(title='Total Clients (Action + Control)', showgrid=True,
-                   gridcolor=C['light_gray']),
+                   gridcolor=C['light_gray'],
+                   range=[0, 2_500_000]),
         yaxis=dict(autorange='reversed', tickfont=dict(size=12)),
         barmode='stack',
         showlegend=True,
+        legend=dict(x=0.98, y=0.02, xanchor='right', yanchor='bottom',
+                    bgcolor='rgba(255,255,255,0.85)',
+                    bordercolor='#ddd', borderwidth=1, font=dict(size=10)),
     )
 )
 fig2.add_annotation(
@@ -213,10 +218,10 @@ for mne in LIFT_ORDER:
 lift_df = pd.DataFrame(lifts)
 
 revenue_map = {
-    'VCN': ('$281K', 280852),
-    'VDA': ('$218K', 218359),
-    'VDT': ('$480K', 480033),
-    'VAW': ('$846K*', 845903),
+    'VCN': ('281K', 280852),
+    'VDA': ('218K', 218359),
+    'VDT': ('480K', 480033),
+    'VAW': ('846K*', 845903),
 }
 
 fig3 = go.Figure()
@@ -234,7 +239,7 @@ fig3.add_trace(go.Bar(
     textfont=dict(size=12, color=C['black']),
 ))
 
-# Significance stars
+# Significance stars and revenue labels
 for i, r in lift_df.iterrows():
     label = f"{r['mne']} — {r['name']}"
     if r['sig']:
@@ -244,7 +249,7 @@ for i, r in lift_df.iterrows():
             text=f"  {stars}",
             showarrow=False, xanchor='left',
             font=dict(size=14, color=SIG_COLOR, family=FONT),
-            xshift=45,
+            xshift=50,
         )
     if r['mne'] in revenue_map:
         rev_label, _ = revenue_map[r['mne']]
@@ -253,7 +258,7 @@ for i, r in lift_df.iterrows():
             text=f"  {rev_label}",
             showarrow=False, xanchor='left',
             font=dict(size=11, color=C['dark_blue'], family=FONT),
-            xshift=75,
+            xshift=85,
         )
 
 fig3.update_layout(
@@ -262,23 +267,25 @@ fig3.update_layout(
             text='4 of 6 campaigns show statistically significant positive lift',
             font=dict(size=18, color=C['dark_blue']),
         ),
-        height=420,
+        height=460,
+        margin=dict(l=60, r=40, t=100, b=100),
         xaxis=dict(title='Absolute Lift (percentage points)', showgrid=True,
                    gridcolor=C['light_gray'], zeroline=True,
-                   zerolinecolor=C['gray'], zerolinewidth=1),
+                   zerolinecolor=C['gray'], zerolinewidth=1,
+                   range=[-0.2, 6.5]),
         yaxis=dict(tickfont=dict(size=12)),
         showlegend=False,
     )
 )
 fig3.add_annotation(
-    text='Conservative NIBT: $499K (VCN+VDA) | With activation: $979K | Extended: $1.83M*',
-    xref='paper', yref='paper', x=0.5, y=-0.22,
+    text='Conservative NIBT: 499K (VCN+VDA)  |  With activation: 979K  |  Extended: 1.83M*',
+    xref='paper', yref='paper', x=0.5, y=-0.18,
     showarrow=False,
     font=dict(size=12, color=C['dark_blue'], family=FONT),
 )
 fig3.add_annotation(
-    text='* VAW revenue uses acquisition proxy ($78.21/client) — not validated for provisioning',
-    xref='paper', yref='paper', x=0.5, y=-0.30,
+    text='* VAW revenue uses acquisition proxy (78.21/client) — not validated for provisioning',
+    xref='paper', yref='paper', x=0.5, y=-0.26,
     showarrow=False,
     font=dict(size=10, color=C['gray'], family=FONT),
 )
@@ -311,11 +318,12 @@ def plot_vintage(mne, title, subtitle, metric='PRIMARY',
     ]
 
     if muted:
+        # Muted but still distinguishable: action = desaturated blue, control = light gray
         action_shades = [
-            f'rgba(158,162,162,{0.3 + 0.5 * i / max(n - 1, 1)})' for i in range(n)
+            f'rgba(120,140,160,{0.35 + 0.5 * i / max(n - 1, 1)})' for i in range(n)
         ]
         control_shades = [
-            f'rgba(200,200,200,{0.3 + 0.5 * i / max(n - 1, 1)})' for i in range(n)
+            f'rgba(190,195,200,{0.3 + 0.5 * i / max(n - 1, 1)})' for i in range(n)
         ]
 
     fig = go.Figure()
@@ -350,19 +358,24 @@ def plot_vintage(mne, title, subtitle, metric='PRIMARY',
             else:
                 control_finals.append(final_rate)
 
-    # Gap annotation at the final day
+    # Gap annotation — place inside the chart area, left of the final day
     if action_finals and control_finals:
         avg_action = sum(action_finals) / len(action_finals)
         avg_control = sum(control_finals) / len(control_finals)
         gap = avg_action - avg_control
         gap_sign = '+' if gap >= 0 else ''
 
+        # Position annotation at ~80% of max_day so it doesn't clip
+        ann_x = max_day * 0.75
+        ann_y = (avg_action + avg_control) / 2
         fig.add_annotation(
-            x=max_day, y=(avg_action + avg_control) / 2,
-            text=f'  {gap_sign}{gap:.2f}pp gap',
-            showarrow=True, arrowhead=0, arrowcolor=C['dark_blue'],
-            ax=60, ay=0,
+            x=ann_x, y=ann_y,
+            text=f'<b>{gap_sign}{gap:.2f}pp gap</b>',
+            showarrow=True, arrowhead=2, arrowcolor=C['dark_blue'],
+            ax=-40, ay=-30,
             font=dict(size=12, color=C['dark_blue'], family=FONT),
+            bgcolor='rgba(255,255,255,0.8)',
+            bordercolor=C['dark_blue'], borderwidth=1, borderpad=4,
         )
 
     fig.update_layout(
@@ -380,8 +393,8 @@ def plot_vintage(mne, title, subtitle, metric='PRIMARY',
     )
     fig.add_annotation(
         text=subtitle,
-        xref='paper', yref='paper', x=0.5, y=-0.18,
-        showarrow=False, font=dict(size=11, color=C['gray'], family=FONT),
+        xref='paper', yref='paper', x=0.5, y=-0.16,
+        showarrow=False, font=dict(size=10, color=C['gray'], family=FONT),
     )
 
     return fig
@@ -389,7 +402,7 @@ def plot_vintage(mne, title, subtitle, metric='PRIMARY',
 
 fig4 = plot_vintage(
     'VCN',
-    title='VCN: Contextual Notification drives +0.18pp lift (p<0.001) — $281K NIBT',
+    title='VCN: Contextual Notification drives +0.18pp lift (p<0.001) — 281K NIBT',
     subtitle='N=1,999,540 | Channel: MB | Split: 95/5 | SRM detected (94.7/5.3 vs 95/5)',
 )
 if fig4:
@@ -402,7 +415,7 @@ if fig4:
 
 fig5 = plot_vintage(
     'VDA',
-    title='VDA: Seasonal Acquisition delivers +0.31pp lift (p<0.001) — $218K NIBT',
+    title='VDA: Seasonal Acquisition delivers +0.31pp lift (p<0.001) — 218K NIBT',
     subtitle='N=894,779 | Channel: IM+EM | Split: 95/5 | SRM detected (92/8 vs 95/5)',
 )
 if fig5:
@@ -415,7 +428,7 @@ if fig5:
 
 fig6 = plot_vintage(
     'VDT',
-    title='VDT: Activation Trigger shows strongest lift at +4.65pp (p<0.001) — $480K NIBT',
+    title='VDT: Activation Trigger shows strongest lift at +4.65pp (p<0.001) — 480K NIBT',
     subtitle='N=132,015 | Channel: EM | Split: 90/10 | 95% of cards auto-activate — shrinking TAM',
 )
 if fig6:
@@ -456,7 +469,7 @@ if fig8:
 
 fig9 = plot_vintage(
     'VAW',
-    title='VAW: Add To Wallet delivers strongest campaign lift at +2.62pp (p<0.001) — $846K* NIBT',
+    title='VAW: Add To Wallet delivers strongest campaign lift at +2.62pp (p<0.001) — 846K* NIBT',
     subtitle='N=412,568 | Channel: IM | Split: 80/20 | *NIBT uses acquisition proxy, not validated for provisioning',
     bold_action=True,
 )
@@ -496,14 +509,14 @@ header_color = C['dark_blue']
 row_colors = ['#F8F9FA', C['cool_white']] * 3
 
 fig10 = go.Figure(data=[go.Table(
-    columnwidth=[60, 90, 150, 120, 80, 280],
+    columnwidth=[80, 100, 160, 130, 70, 300],
     header=dict(
         values=['<b>Campaign</b>', '<b>Action</b>', '<b>Name</b>',
                 '<b>Lift</b>', '<b>NIBT</b>', '<b>Key Finding</b>'],
         fill_color=header_color,
         font=dict(color='white', size=13, family=FONT),
         align='left',
-        height=35,
+        height=38,
     ),
     cells=dict(
         values=[
@@ -527,7 +540,7 @@ fig10 = go.Figure(data=[go.Table(
             ],
         ),
         align='left',
-        height=32,
+        height=34,
     ),
 )])
 
@@ -537,18 +550,18 @@ fig10.update_layout(
             text='Recommendations & Next Investigations',
             font=dict(size=18, color=C['dark_blue']),
         ),
-        height=380,
-        margin=dict(l=20, r=20, t=80, b=120),
+        height=420,
+        margin=dict(l=20, r=20, t=80, b=130),
     )
 )
 
-# Revenue summary
+# Revenue summary (no dollar signs to avoid MathJax rendering)
 fig10.add_annotation(
     text=('Revenue Summary:  '
           'Conservative 499K (VCN+VDA)  |  '
           'With VDT: 979K  |  '
           'With VAW: 1.83M*'),
-    xref='paper', yref='paper', x=0.0, y=-0.18,
+    xref='paper', yref='paper', x=0.0, y=-0.22,
     showarrow=False, xanchor='left',
     font=dict(size=12, color=C['dark_blue'], family=FONT),
 )
@@ -561,7 +574,7 @@ fig10.add_annotation(
           'VUT/VAW attribution overlap  ·  '
           'Revenue methodology validation  ·  '
           'Card type segmentation'),
-    xref='paper', yref='paper', x=0.0, y=-0.30,
+    xref='paper', yref='paper', x=0.0, y=-0.34,
     showarrow=False, xanchor='left',
     font=dict(size=11, color=C['gray'], family=FONT),
 )
