@@ -1683,6 +1683,99 @@ download_csv(vintage_curves_pd, "vvd_v2_vintage_curves.csv")
 
 
 # ============================================================
+# CELL 10b: FISCAL QUARTER VINTAGE CURVES
+# Same logic as Cell 10 but grouped by RBC fiscal quarter instead of calendar month.
+# RBC fiscal year starts November 1: Nov-Jan = Q1, Feb-Apr = Q2, May-Jul = Q3, Aug-Oct = Q4.
+# ============================================================
+
+fq_base = result_df.filter(F.col("TREATMT_STRT_DT") < "2026-03-01")
+
+fq_month = F.month(F.col("TREATMT_STRT_DT"))
+fq_year = F.year(F.col("TREATMT_STRT_DT"))
+
+fiscal_year = F.when(fq_month >= 11, fq_year + 1).otherwise(fq_year)
+fiscal_quarter = (
+    F.when(fq_month.isin([11, 12, 1]), F.lit("Q1"))
+     .when(fq_month.isin([2, 3, 4]), F.lit("Q2"))
+     .when(fq_month.isin([5, 6, 7]), F.lit("Q3"))
+     .otherwise(F.lit("Q4"))
+)
+fiscal_cohort = F.concat(F.lit("FY"), fiscal_year.cast("string"), fiscal_quarter)
+
+fq_base = fq_base.withColumn("FQ_COHORT", fiscal_cohort)
+
+fq_curve_parts = []
+
+for mne, metrics in campaign_metrics.items():
+    mne_df = fq_base.filter(F.col("MNE") == mne)
+    for metric in metrics:
+        date_col = METRIC_TO_DATE_COL[metric]
+
+        metric_curve = (
+            mne_df
+            .withColumn("METRIC", F.lit(metric))
+            .withColumn("DAYS_TO_SUCCESS",
+                F.when(F.col(date_col).isNotNull(),
+                       F.datediff(F.col(date_col), F.col("TREATMT_STRT_DT")))
+            )
+        )
+        fq_curve_parts.append(
+            metric_curve.select(
+                "MNE", F.col("FQ_COHORT").alias("COHORT"),
+                "TST_GRP_CD", "RPT_GRP_CD",
+                "METRIC", "WINDOW_DAYS", "DAYS_TO_SUCCESS"
+            )
+        )
+
+fq_all_curves = fq_curve_parts[0]
+for part in fq_curve_parts[1:]:
+    fq_all_curves = fq_all_curves.unionByName(part)
+
+fq_group_cols = ["MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC"]
+fq_group_stats = (
+    fq_all_curves
+    .groupBy(*fq_group_cols)
+    .agg(
+        F.count("*").alias("CLIENT_CNT"),
+        F.expr("percentile_approx(WINDOW_DAYS, 0.5)").alias("WINDOW_DAYS"),
+    )
+)
+
+fq_day_range = (
+    fq_group_stats
+    .withColumn("DAY", F.explode(F.sequence(F.lit(0), F.col("WINDOW_DAYS"))))
+)
+
+fq_success_at_day = (
+    fq_all_curves
+    .groupBy(*fq_group_cols, "DAYS_TO_SUCCESS")
+    .agg(F.count("*").alias("cnt"))
+    .filter(F.col("DAYS_TO_SUCCESS").isNotNull())
+)
+
+fq_vintage_curves = (
+    fq_day_range
+    .join(fq_success_at_day, on=fq_group_cols, how="left")
+    .filter(
+        F.col("DAYS_TO_SUCCESS").isNull() |
+        (F.col("DAYS_TO_SUCCESS") <= F.col("DAY"))
+    )
+    .groupBy(*fq_group_cols, "DAY", "WINDOW_DAYS", "CLIENT_CNT")
+    .agg(F.coalesce(F.sum("cnt"), F.lit(0)).alias("SUCCESS_CNT"))
+    .withColumn("RATE", F.col("SUCCESS_CNT") / F.col("CLIENT_CNT") * 100)
+    .select("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC",
+            "DAY", "WINDOW_DAYS", "CLIENT_CNT", "SUCCESS_CNT", "RATE")
+    .orderBy("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC", "DAY")
+)
+
+fq_vintage_pd = fq_vintage_curves.toPandas()
+print(f"Fiscal quarter vintage curves: {len(fq_vintage_pd):,} rows")
+print(fq_vintage_pd.head(20).to_string(index=False))
+
+download_csv(fq_vintage_pd, "vvd_v2_vintage_curves_fiscal_quarter.csv")
+
+
+# ============================================================
 # CELL 11: CLEANUP
 # Run when done to release cluster memory.
 # ============================================================
