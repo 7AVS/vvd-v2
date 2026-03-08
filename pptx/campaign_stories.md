@@ -267,7 +267,11 @@
 - **If VAW included with footnote**: **$1,825,147** — but $78.21 applicability is questionable for wallet provisioning
 
 ### SRM Position
-VCN and VDA both show SRM. VDA is 92/8 vs expected 95/5 (chi-sq 18,439). VCN is ~94.7/5.3 vs expected 95/5. In both cases, control is larger than expected — fewer clients received the action treatment than designed, and more ended up in control. This doesn't impair lift detection — if anything, a larger control improves measurement precision. The concern would be if control shrank (harder to detect lift); here it grew. SRM is a flag to investigate with campaign design (why did more clients end up in control?), not a blocker for the analysis or revenue claims.
+VCN and VDA both show SRM. VDA is 92/8 vs expected 95/5 (chi-sq 18,439). VCN is ~94.7/5.3 vs expected 95/5. In both cases, control is larger than expected — fewer clients received the action treatment than designed, and more ended up in control.
+
+**RISK**: SRM means the randomization is broken. We don't know WHY the split deviated. If certain client types systematically shifted between groups, the remaining groups may not be comparable — lift estimates could be biased in either direction. A larger control improves precision ONLY if the groups are still comparable. SRM says they may not be.
+
+**Position**: We CAN present results, but the caveat must be clear: "Lift may be biased due to SRM. Root cause investigation needed before budget decisions." SRM is a flag that requires investigation with campaign design and data engineering. It does not block the analysis, but it weakens confidence in the numbers.
 
 ### Open Gaps
 - [ ] Time horizon: Is $78.21 year 1? 5-year? Lifetime? Unknown. Use as-is with footnote.
