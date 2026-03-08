@@ -963,7 +963,6 @@ def build_row(mne, cohort, rpt_grp, channel, a, c, cs, em):
     return {
         "MNE": mne,
         "COHORT": cohort,
-        "TST_GRP_CD": ACTION_GROUP,
         "RPT_GRP_CD": rpt_grp,
         "TACTIC_CELL_CD": channel,
         "action_deployments": a["deployments"],
