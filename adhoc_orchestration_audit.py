@@ -29,9 +29,12 @@ except ImportError:
     pass
 
 HDFS_PATH = "/user/427966379/vvd_v2_result"
+DATA_END_DATE = "2026-03-01"
+
 result_df = spark.read.parquet(HDFS_PATH)
+result_df = result_df.filter(F.col("TREATMT_STRT_DT") < DATA_END_DATE)
 result_df.persist()
-print(f"Loaded result_df: {result_df.count():,} rows")
+print(f"Loaded result_df (through {DATA_END_DATE}): {result_df.count():,} rows")
 
 ACTION_GROUP = "TG4"
 CONTROL_GROUP = "TG7"
