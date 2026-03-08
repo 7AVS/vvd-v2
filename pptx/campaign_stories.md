@@ -212,26 +212,43 @@
 
 ---
 
-## Presentation Section Structure (within team deck — this is a SPOTLIGHT, not standalone)
+## Presentation Context — DEFINITIVE (saved 2026-03-08)
 
-**Slide 1**: Campaign Portfolio Overview
-- What are the 6 campaigns, funnel map, experiment design table
-- Quick visual: which stage of the customer lifecycle each targets
+### Format
+- **SPOTLIGHT** within a larger Payment LOB Power Pack meeting
+- Multiple LOBs present (2-3 others). Each LOB presents their campaigns.
+- First part of meeting = results across all campaigns/LOBs
+- Spotlight = IF TIME ALLOWS, ~10 minutes maximum
+- Audience: team + leadership across LOBs
 
-**Slide 2**: Acquisition Results (VCN + VDA)
-- Vintage curves (by cohort), KPIs, revenue, recommendation
+### Tone
+- NOT the place for surprises or "everything is wrong"
+- Present results positively, flag issues as "next investigations"
+- Deep dives and corrective findings go to SEPARATE dedicated LOB meetings
+- This is a showcase, not a postmortem
 
-**Slide 3**: Activation & Usage Results (VDT + VUI)
-- Same pattern. VDT card-type insight. VUI significance issue.
+### Issues to FLAG as "next investigations" (NOT present as problems):
+1. VUT/VAW attribution overlap — impacts both campaigns' results
+2. VDT post-success waste — needs granular validation
+3. SRM on VCN/VDA — randomization investigation needed
+4. Revenue methodology — $78.21 applicability beyond acquisition
+5. VCN waste — actually proved suppression works (positive finding)
 
-**Slide 4**: Wallet Provisioning (VUT + VAW)
-- The contrast story: same goal, opposite results
-- Discontinue VUT, expand VAW
+### Slide Structure (user-directed, 2026-03-08)
+**Slide 1**: Campaign overview — what each campaign does, characteristics, why it exists, funnel position
+**Slide 2**: Top of funnel — Acquisition + Activation (VCN, VDA, VDT) with vintage curves
+**Slide 3**: Bottom of funnel — Usage + Provisioning (VUI, VUT, VAW) with vintage curves
+**Slide 4+ (if time)**: Per-campaign recommendations, interesting findings, orchestration insights
 
-**Slide 5** (if time): Recommendations Summary
-- Continue / Optimize / Expand / Discontinue per campaign
-- Revenue summary
-- Next steps
+### Orchestration angle
+- Original idea: what do we learn looking at all 6 together?
+- NOT the VUT/VAW attribution deep dive (save for LOB meeting)
+- Light touch: "here's what we're investigating next"
+
+### Open design questions
+- 1 slide per campaign vs grouped (2 slides for 6 campaigns)?
+- Multiple layout versions to compare?
+- Content first, container second — nail the narrative before building slides
 
 ---
 

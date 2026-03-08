@@ -98,17 +98,16 @@ def get_plotly_template():
 
 # ── Campaign Metadata ────────────────────────────────────────────
 CAMPAIGNS = {
-    "VCN": {"name": "Contextual Notification", "goal": "Card Acquisition", "group": "acquisition"},
-    "VDA": {"name": "Black Friday",            "goal": "Card Acquisition", "group": "acquisition"},
-    "VDT": {"name": "Activation Trigger",      "goal": "Card Activation",  "group": "activation_usage"},
-    "VUI": {"name": "Usage Trigger",            "goal": "Card Usage",       "group": "activation_usage"},
-    "VUT": {"name": "Tokenization Usage",       "goal": "Wallet Provisioning", "group": "provisioning"},
-    "VAW": {"name": "Add To Wallet",            "goal": "Wallet Provisioning", "group": "provisioning"},
+    "VCN": {"name": "Contextual Notification", "goal": "Card Acquisition",    "group": "top_funnel"},
+    "VDA": {"name": "Seasonal Acquisition",    "goal": "Card Acquisition",    "group": "top_funnel"},
+    "VDT": {"name": "Activation Trigger",      "goal": "Card Activation",     "group": "top_funnel"},
+    "VUI": {"name": "Usage Trigger",            "goal": "Card Usage",          "group": "bottom_funnel"},
+    "VUT": {"name": "Tokenization Usage",       "goal": "Wallet Provisioning", "group": "bottom_funnel"},
+    "VAW": {"name": "Add To Wallet",            "goal": "Wallet Provisioning", "group": "bottom_funnel"},
 }
 
-# Slide groupings (3-4 dense slides)
+# Slide groupings — 3 per slide for the funnel narrative
 SLIDE_GROUPS = {
-    "acquisition":      {"title": "Card Acquisition",        "mnes": ["VCN", "VDA"]},
-    "activation_usage": {"title": "Activation & Usage",      "mnes": ["VDT", "VUI"]},
-    "provisioning":     {"title": "Wallet Provisioning",     "mnes": ["VUT", "VAW"]},
+    "top_funnel":    {"title": "Acquisition & Activation",    "mnes": ["VCN", "VDA", "VDT"]},
+    "bottom_funnel": {"title": "Usage & Wallet Provisioning", "mnes": ["VUI", "VUT", "VAW"]},
 }
