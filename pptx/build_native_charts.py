@@ -13,7 +13,6 @@
 
 import csv
 from collections import defaultdict
-from pathlib import Path
 
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
@@ -22,9 +21,13 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
-BASE = Path(__file__).resolve().parent
-DATA = BASE / "data"
-OUTPUT = BASE / "VVD_v2_NativeCharts.pptx"
+# ============================================================
+# EDIT THESE PATHS before running
+# ============================================================
+INPUT_VINTAGE = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\PVD_P2_vintage_curves.csv"
+INPUT_SUMMARY = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\Data Source\campaign_summary.csv"
+OUTPUT_PPTX   = r"\\maple.FG.RBC.com\data\toronto\WRKGRP\WRGroup16\Marketing Services In% Transformation\Marketing Analytics\CPB\Payment\VDD Vintage\VDD PowerPack 2026 Mar\VVD_v2_NativeCharts.pptx"
+# ============================================================
 
 # --- campaign metadata ---
 CAMPAIGNS = ["VCN", "VDA", "VDT", "VUI", "VUT", "VAW"]
@@ -58,7 +61,7 @@ def get_cohort_color(cohort, cohorts_sorted):
 
 # --- load campaign summary ---
 summary = {}
-with open(DATA / "campaign_summary.csv", newline="") as f:
+with open(INPUT_SUMMARY, newline="") as f:
     for row in csv.DictReader(f):
         if row["TST_GRP_CD"] == "TG4":
             summary[row["MNE"]] = {
@@ -80,7 +83,7 @@ def sig_label(p):
 # --- load vintage curves and compute cumulative rates ---
 # key: (MNE, COHORT, TST_GRP_CD) -> sorted list of (day, cumulative_rate)
 raw = defaultdict(list)
-with open(DATA / "vintage_curves.csv", newline="") as f:
+with open(INPUT_VINTAGE, newline="") as f:
     for row in csv.DictReader(f):
         key = (row["MNE"], row["COHORT"], row["TST_GRP_CD"])
         raw[key].append((int(row["DAY"]), int(row["SUCCESS_CNT"]), int(row["CLIENT_CNT"])))
@@ -214,5 +217,5 @@ for mne in CAMPAIGNS:
         series.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH if grp == "TG7" else MSO_LINE_DASH_STYLE.SOLID
         series.marker.style = XL_MARKER_STYLE.NONE
 
-prs.save(str(OUTPUT))
-print(f"Saved: {OUTPUT}")
+prs.save(OUTPUT_PPTX)
+print(f"Saved: {OUTPUT_PPTX}")
