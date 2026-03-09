@@ -12,23 +12,21 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### VDT Results
+### Performance by Channel (Q1 2026: Nov–Jan)
 
-| Metric | Value |
-|--------|-------|
-| Action clients | 132,015 |
-| Control clients | 14,703 |
-| Deployments | 723,566 |
-| Action rate | 61.05% |
-| Control rate | 56.40% |
-| Lift | **+4.65pp** (p=0.0001) |
-| Incremental activations | **6,138** |
-| Cohorts significant | **13 of 15** |
-| Dec 2025 | +3.51pp |
-| Jan 2026 | +4.57pp |
-| Feb 2026 | +4.85pp |
+| Channel | Deploys | Clients | Successes | Rate | Control Rate | Sig |
+|---------|---------|---------|-----------|------|-------------|-----|
+| EM | 81,381 | 21,685 | 52,657 | 66.3% | 61.1% | Yes |
+| DO | 3,852 | 3,848 | 1,383 | 60.4% | 61.1% | No |
 
-Two-stage email: day 7 activation + day 15 reminder for non-activators. 118 deployments per incremental activation.
+### Performance by Segment (Q1 2026: Nov–Jan)
+
+| Segment | Deploys | Clients | Successes | Rate | Control Rate | Sig |
+|---------|---------|---------|-----------|------|-------------|-----|
+| Student | 7,939 | 2,523 | 4,731 | 72.4% | 61.1% | Yes |
+| Non-Student | 77,294 | 23,010 | 49,309 | 64.9% | 61.1% | Yes |
+
+Two-stage email: day 7 activation + day 15 reminder for non-activators. Overall: 132,015 action clients, +4.65pp lift (p=0.0001), 6,138 incremental activations, 13 of 15 cohorts significant.
 
 **Recommendation**: Protect VDT. Investigate third nudge (day 21) for remaining non-activators.
 
