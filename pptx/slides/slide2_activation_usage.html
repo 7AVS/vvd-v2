@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>VDT + VUI — Activation &amp; Usage</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #2a2a2a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+
+  .slide {
+    width: 1280px;
+    height: 720px;
+    background: #E7EEF1;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+
+  /* ── Top bar ── */
+  .top-bar {
+    background: #003168;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 40px;
+  }
+  .top-bar h1 {
+    color: #FFFFFF;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+
+  /* ── Two-panel layout ── */
+  .panels {
+    display: flex;
+    height: 620px;
+  }
+
+  .panel {
+    width: 50%;
+    padding: 22px 28px 16px;
+    position: relative;
+  }
+  .panel-left {
+    border-right: 1px solid #C8D1D6;
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #003168;
+    margin-bottom: 12px;
+    line-height: 1.35;
+  }
+
+  /* ── Chart placeholder ── */
+  .chart-placeholder {
+    width: 100%;
+    height: 210px;
+    background: #FFFFFF;
+    border: 1px solid #C8D1D6;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .chart-placeholder .chart-label {
+    font-size: 12px;
+    color: #9EA2A2;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .chart-placeholder .chart-icon {
+    font-size: 36px;
+    color: #C8D1D6;
+    margin-bottom: 6px;
+  }
+
+  /* ── Vintage curve mini-viz inside chart placeholder ── */
+  .mini-curves {
+    width: 90%;
+    height: 140px;
+    position: relative;
+    margin-top: 4px;
+  }
+  .mini-curves svg { width: 100%; height: 100%; }
+
+  /* ── NIBT callout ── */
+  .nibt-box {
+    background: linear-gradient(135deg, #0051A5 0%, #003168 100%);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    color: #FFFFFF;
+  }
+  .nibt-amount {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .nibt-detail {
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.85;
+    margin-top: 2px;
+  }
+
+  /* ── Action vs Control bars ── */
+  .comparison-section {
+    background: #FFFFFF;
+    border-radius: 6px;
+    padding: 12px 16px;
+    border: 1px solid #C8D1D6;
+  }
+  .comparison-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: #003168;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .bar-label {
+    width: 60px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #333333;
+    flex-shrink: 0;
+  }
+  .bar-track {
+    flex: 1;
+    height: 22px;
+    background: #F0F0F0;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+  }
+  .bar-fill.action { background: #0051A5; }
+  .bar-fill.control { background: #9EA2A2; }
+  .bar-value {
+    font-size: 10px;
+    font-weight: 600;
+    color: #FFFFFF;
+    white-space: nowrap;
+  }
+  .bar-note {
+    font-size: 10px;
+    color: #666666;
+    font-style: italic;
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  /* ── Significance heatmap grid ── */
+  .sig-section {
+    background: #FFFFFF;
+    border-radius: 6px;
+    padding: 14px 16px;
+    border: 1px solid #C8D1D6;
+    margin-bottom: 14px;
+  }
+  .sig-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: #003168;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sig-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9EA2A2;
+    background: #F0F0F0;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .heatmap-grid {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .heatmap-cell {
+    width: 40px;
+    height: 36px;
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 600;
+    position: relative;
+  }
+  .heatmap-cell.not-sig {
+    background: #D4D6D6;
+    color: #666666;
+  }
+  .heatmap-cell .cell-month {
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .heatmap-cell .cell-status {
+    font-size: 7px;
+    font-weight: 400;
+    margin-top: 1px;
+    opacity: 0.7;
+  }
+
+  /* ── Config change amber box ── */
+  .config-box {
+    border: 2px solid #FCA311;
+    border-radius: 6px;
+    padding: 12px 16px;
+    background: #FFFBF0;
+  }
+  .config-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #333333;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .config-header .amber-dot {
+    width: 8px;
+    height: 8px;
+    background: #FCA311;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .config-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 8px 0;
+  }
+  .config-list li {
+    font-size: 11px;
+    color: #333333;
+    padding: 3px 0;
+    padding-left: 18px;
+    position: relative;
+    line-height: 1.35;
+  }
+  .config-list li::before {
+    content: attr(data-num) ".";
+    position: absolute;
+    left: 0;
+    font-weight: 700;
+    color: #FCA311;
+  }
+  .config-status {
+    font-size: 11px;
+    font-weight: 700;
+    color: #E68A00;
+    border-top: 1px solid #F0DEB0;
+    padding-top: 6px;
+    margin-top: 2px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: #003168;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .footer span {
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Divider accent ── */
+  .panel-left::after {
+    content: "";
+    position: absolute;
+    top: 16px;
+    right: -1px;
+    width: 3px;
+    height: 40px;
+    background: #07AFBF;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="slide">
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <h1>Activation &amp; Usage — One Delivering, One Needs Reassessment</h1>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels">
+
+    <!-- ════════ LEFT PANEL: VDT ════════ -->
+    <div class="panel panel-left">
+      <div class="panel-title">VDT — Highest Lift in Portfolio, 13 of 15 Cohorts Significant</div>
+
+      <!-- Chart Placeholder with mini vintage curves -->
+      <div class="chart-placeholder">
+        <div class="mini-curves">
+          <svg viewBox="0 0 500 140" preserveAspectRatio="none">
+            <!-- Grid lines -->
+            <line x1="0" y1="35" x2="500" y2="35" stroke="#E8E8E8" stroke-width="0.5"/>
+            <line x1="0" y1="70" x2="500" y2="70" stroke="#E8E8E8" stroke-width="0.5"/>
+            <line x1="0" y1="105" x2="500" y2="105" stroke="#E8E8E8" stroke-width="0.5"/>
+            <!-- Y-axis labels -->
+            <text x="2" y="12" font-size="8" fill="#9EA2A2" font-family="Segoe UI">40%</text>
+            <text x="2" y="47" font-size="8" fill="#9EA2A2" font-family="Segoe UI">30%</text>
+            <text x="2" y="82" font-size="8" fill="#9EA2A2" font-family="Segoe UI">20%</text>
+            <text x="2" y="117" font-size="8" fill="#9EA2A2" font-family="Segoe UI">10%</text>
+            <!-- Action curves (blue, multiple cohorts converging) -->
+            <polyline points="30,120 80,85 140,60 200,45 270,35 340,28 410,24 470,22" fill="none" stroke="#0051A5" stroke-width="1.8" opacity="0.9"/>
+            <polyline points="70,125 120,90 180,65 240,48 310,38 380,32 440,28" fill="none" stroke="#0051A5" stroke-width="1.2" opacity="0.6"/>
+            <polyline points="110,128 160,95 220,70 280,52 340,42 400,36" fill="none" stroke="#0051A5" stroke-width="1.2" opacity="0.5"/>
+            <polyline points="150,130 200,98 260,75 320,58 370,48" fill="none" stroke="#0051A5" stroke-width="1.2" opacity="0.4"/>
+            <polyline points="200,132 250,100 310,78 360,62" fill="none" stroke="#0051A5" stroke-width="1.2" opacity="0.3"/>
+            <!-- Control curves (grey dashed, lower) -->
+            <polyline points="30,130 80,105 140,88 200,78 270,70 340,65 410,62 470,60" fill="none" stroke="#9EA2A2" stroke-width="1.8" stroke-dasharray="4,3" opacity="0.9"/>
+            <polyline points="70,132 120,108 180,90 240,80 310,72 380,68 440,65" fill="none" stroke="#9EA2A2" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.6"/>
+            <polyline points="110,134 160,112 220,94 280,84 340,78 400,74" fill="none" stroke="#9EA2A2" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.5"/>
+            <!-- Legend -->
+            <line x1="340" y1="8" x2="360" y2="8" stroke="#0051A5" stroke-width="2"/>
+            <text x="364" y="11" font-size="8" fill="#333" font-family="Segoe UI">Action</text>
+            <line x1="400" y1="8" x2="420" y2="8" stroke="#9EA2A2" stroke-width="2" stroke-dasharray="4,3"/>
+            <text x="424" y="11" font-size="8" fill="#333" font-family="Segoe UI">Control</text>
+            <!-- Significance stars -->
+            <text x="470" y="18" font-size="10" fill="#E68A00" font-family="Segoe UI" font-weight="700">★★★</text>
+            <!-- X-axis label -->
+            <text x="250" y="138" font-size="8" fill="#9EA2A2" font-family="Segoe UI" text-anchor="middle">Days since deployment</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- NIBT Callout -->
+      <div class="nibt-box">
+        <div class="nibt-amount">$456,512</div>
+        <div class="nibt-detail">5,837 incremental activations &nbsp;|&nbsp; Jan 2025 – Feb 2026</div>
+      </div>
+
+      <!-- Action vs Control Bars -->
+      <div class="comparison-section">
+        <div class="comparison-header">Post-Activation (90 days)</div>
+
+        <div class="bar-row">
+          <div class="bar-label">Action</div>
+          <div class="bar-track">
+            <div class="bar-fill action" style="width: 85.8%;">
+              <span class="bar-value">85.8% transact &nbsp;|&nbsp; $1,489 avg</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bar-row">
+          <div class="bar-label">Control</div>
+          <div class="bar-track">
+            <div class="bar-fill control" style="width: 87.4%;">
+              <span class="bar-value">87.4% transact &nbsp;|&nbsp; $1,509 avg</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bar-note">Both groups high-value. Potential post-event contact waste — under investigation</div>
+      </div>
+    </div>
+
+    <!-- ════════ RIGHT PANEL: VUI ════════ -->
+    <div class="panel">
+      <div class="panel-title">VUI — No Detectable Lift, Baseline Usage at 33%</div>
+
+      <!-- Chart Placeholder with flat overlapping curves -->
+      <div class="chart-placeholder">
+        <div class="mini-curves">
+          <svg viewBox="0 0 500 140" preserveAspectRatio="none">
+            <!-- Grid lines -->
+            <line x1="0" y1="35" x2="500" y2="35" stroke="#E8E8E8" stroke-width="0.5"/>
+            <line x1="0" y1="70" x2="500" y2="70" stroke="#E8E8E8" stroke-width="0.5"/>
+            <line x1="0" y1="105" x2="500" y2="105" stroke="#E8E8E8" stroke-width="0.5"/>
+            <!-- Y-axis labels -->
+            <text x="2" y="12" font-size="8" fill="#9EA2A2" font-family="Segoe UI">40%</text>
+            <text x="2" y="47" font-size="8" fill="#9EA2A2" font-family="Segoe UI">30%</text>
+            <text x="2" y="82" font-size="8" fill="#9EA2A2" font-family="Segoe UI">20%</text>
+            <text x="2" y="117" font-size="8" fill="#9EA2A2" font-family="Segoe UI">10%</text>
+            <!-- Action curves (blue, nearly overlapping with control) -->
+            <polyline points="30,88 80,72 140,62 200,56 270,52 340,50 410,48 470,47" fill="none" stroke="#0051A5" stroke-width="1.8" opacity="0.8"/>
+            <polyline points="70,90 120,75 180,65 240,58 310,54 380,52 440,50" fill="none" stroke="#0051A5" stroke-width="1.2" opacity="0.5"/>
+            <polyline points="110,92 160,78 220,67 280,60 340,56 400,54" fill="none" stroke="#0051A5" stroke-width="1.2" opacity="0.4"/>
+            <!-- Control curves (grey dashed, nearly identical) -->
+            <polyline points="30,90 80,74 140,64 200,58 270,54 340,52 410,50 470,49" fill="none" stroke="#9EA2A2" stroke-width="1.8" stroke-dasharray="4,3" opacity="0.8"/>
+            <polyline points="70,92 120,77 180,67 240,60 310,56 380,54 440,52" fill="none" stroke="#9EA2A2" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.5"/>
+            <polyline points="110,94 160,80 220,69 280,62 340,58 400,56" fill="none" stroke="#9EA2A2" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.4"/>
+            <!-- Legend -->
+            <line x1="340" y1="8" x2="360" y2="8" stroke="#0051A5" stroke-width="2"/>
+            <text x="364" y="11" font-size="8" fill="#333" font-family="Segoe UI">Action</text>
+            <line x1="400" y1="8" x2="420" y2="8" stroke="#9EA2A2" stroke-width="2" stroke-dasharray="4,3"/>
+            <text x="424" y="11" font-size="8" fill="#333" font-family="Segoe UI">Control</text>
+            <!-- No sig annotation -->
+            <text x="470" y="44" font-size="9" fill="#9EA2A2" font-family="Segoe UI" font-weight="600" text-anchor="end">n.s.</text>
+            <!-- X-axis label -->
+            <text x="250" y="138" font-size="8" fill="#9EA2A2" font-family="Segoe UI" text-anchor="middle">Days since deployment</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Significance Heatmap Grid -->
+      <div class="sig-section">
+        <div class="sig-header">
+          <span>Cohort Significance</span>
+          <span class="sig-count">0 of 13 significant</span>
+        </div>
+        <div class="heatmap-grid">
+          <div class="heatmap-cell not-sig"><span class="cell-month">Feb</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Mar</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Apr</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">May</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Jun</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Jul</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Aug</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Sep</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Oct</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Nov</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Dec</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Jan</span><span class="cell-status">n.s.</span></div>
+          <div class="heatmap-cell not-sig"><span class="cell-month">Feb</span><span class="cell-status">n.s.</span></div>
+        </div>
+      </div>
+
+      <!-- Config Change Amber Box -->
+      <div class="config-box">
+        <div class="config-header">
+          <span class="amber-dot"></span>
+          Oct 2025: 3 config changes recommended
+        </div>
+        <ol class="config-list">
+          <li data-num="1">Expand target population</li>
+          <li data-num="2">Increase control to 15%</li>
+          <li data-num="3">Relax 365-day resting rule</li>
+        </ol>
+        <div class="config-status">Status: Pending verification &#9888;&#65039;</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>VVD Campaign Measurement &nbsp;|&nbsp; Q3 FY2025 – Q2 FY2026</span>
+  </div>
+
+</div>
+
+</body>
+</html>

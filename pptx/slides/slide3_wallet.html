@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Slide 3 — Wallet Provisioning</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px; height: 720px; overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333333; background: #FFFFFF;
+    display: flex; flex-direction: column;
+  }
+
+  /* ── Top Bar ── */
+  .top-bar {
+    background: #003168; color: #FFFFFF;
+    padding: 14px 40px; font-size: 20px; font-weight: 700;
+    letter-spacing: 0.3px; flex-shrink: 0;
+  }
+
+  /* ── Two-Panel Body ── */
+  .panels {
+    display: flex; flex: 1; min-height: 0;
+  }
+  .panel {
+    width: 50%; padding: 18px 24px 10px;
+    display: flex; flex-direction: column;
+  }
+  .panel-left  { border-right: 2px solid #E7EEF1; }
+  .panel-right { }
+
+  /* ── Panel Titles ── */
+  .panel-title {
+    font-size: 13.5px; font-weight: 700; margin-bottom: 10px; line-height: 1.35;
+  }
+  .panel-left .panel-title  { color: #CC0000; }
+  .panel-right .panel-title { color: #0051A5; }
+
+  /* ── Chart Placeholder ── */
+  .chart-placeholder {
+    border: 2px dashed #9EA2A2; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: #9EA2A2; font-size: 12px; font-style: italic;
+    flex-shrink: 0; margin-bottom: 12px;
+  }
+  .panel-left .chart-placeholder  { height: 150px; }
+  .panel-right .chart-placeholder { height: 150px; }
+
+  /* ── Targeting Comparison Table ── */
+  .comparison-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .comparison-table th {
+    background: #003168; color: #FFFFFF;
+    padding: 5px 10px; text-align: left; font-weight: 600;
+  }
+  .comparison-table th:first-child { border-radius: 4px 0 0 0; }
+  .comparison-table th:last-child  { border-radius: 0 4px 0 0; }
+  .comparison-table td {
+    padding: 5px 10px; border-bottom: 1px solid #E7EEF1;
+  }
+  .comparison-table td:first-child {
+    font-weight: 600; color: #003168; background: #F0F0F0;
+  }
+  .cell-vut { background: #FFE5E5; color: #8B0000; }
+  .cell-vaw { background: #E5FFE5; color: #006400; }
+  .comparison-table tr:last-child td:first-child { border-radius: 0 0 0 4px; }
+  .comparison-table tr:last-child td:last-child  { border-radius: 0 0 4px 0; }
+
+  /* ── Recommendation / Opportunity Box ── */
+  .callout-box {
+    border-radius: 5px; padding: 9px 14px;
+    font-size: 12px; font-weight: 600; line-height: 1.4;
+  }
+  .callout-red {
+    border: 2px solid #CC0000; color: #CC0000; background: #FFF5F5;
+  }
+  .callout-teal {
+    border: 2px solid #07AFBF; color: #006B75; background: #F0FAFB;
+  }
+  .callout-label {
+    font-weight: 700; margin-right: 4px;
+  }
+
+  /* ── KPI Cards ── */
+  .kpi-row {
+    display: flex; gap: 10px; margin-bottom: 12px;
+  }
+  .kpi-card {
+    flex: 1; border-radius: 6px; padding: 10px 12px;
+    color: #FFFFFF; text-align: center;
+  }
+  .kpi-card .kpi-number {
+    font-size: 26px; font-weight: 800; line-height: 1.1;
+  }
+  .kpi-card .kpi-label {
+    font-size: 10px; font-weight: 400; opacity: 0.92;
+    margin-top: 3px; line-height: 1.25;
+  }
+  .kpi-teal  { background: #07AFBF; }
+  .kpi-blue  { background: #0051A5; }
+  .kpi-ocean { background: #0091DA; }
+
+  /* ── Sparkline ── */
+  .sparkline-section {
+    margin-bottom: 12px;
+  }
+  .sparkline-title {
+    font-size: 10.5px; color: #666; margin-bottom: 6px; font-weight: 500;
+  }
+  .sparkline-row {
+    display: flex; align-items: flex-end; gap: 4px; height: 40px;
+    padding: 0 2px;
+  }
+  .spark-bar-wrap {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; height: 100%; justify-content: flex-end;
+  }
+  .spark-bar {
+    width: 100%; max-width: 28px; border-radius: 2px 2px 0 0;
+    background: #0051A5; position: relative;
+  }
+  .spark-bar-wrap .spark-label {
+    font-size: 7.5px; color: #666; margin-top: 2px; white-space: nowrap;
+  }
+  .spark-mean-line {
+    position: relative; width: 100%; margin-top: -22px; margin-bottom: 14px;
+    border-top: 1.5px dashed #CC0000; z-index: 1; pointer-events: none;
+  }
+  .spark-mean-tag {
+    position: absolute; right: 0; top: -10px;
+    font-size: 8px; color: #CC0000; font-weight: 700;
+    background: #FFF; padding: 0 3px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    background: #F0F0F0; border-top: 1px solid #D0D0D0;
+    padding: 6px 40px; font-size: 10px; color: #9EA2A2;
+    text-align: center; flex-shrink: 0;
+  }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: 10px; font-weight: 700; color: #9EA2A2;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ TOP BAR ═══════════════════ -->
+<div class="top-bar">
+  Wallet Provisioning &mdash; VAW Proves the Model, VUT Shows No Effect
+</div>
+
+<!-- ═══════════════════ PANELS ═══════════════════ -->
+<div class="panels">
+
+  <!-- ─── LEFT: VUT ─── -->
+  <div class="panel panel-left">
+    <div class="panel-title">
+      VUT &mdash; Single Cohort, Zero Lift (+0.02pp, p=0.91)
+    </div>
+
+    <div class="chart-placeholder">
+      &#9634; Vintage curve &mdash; VUT (1 cohort, flat)
+    </div>
+
+    <div class="section-label">Why VUT Fails vs VAW</div>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>VUT</th>
+          <th>VAW</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Recency</td>
+          <td class="cell-vut">30 days</td>
+          <td class="cell-vaw">6 days</td>
+        </tr>
+        <tr>
+          <td>Platform</td>
+          <td class="cell-vut">All</td>
+          <td class="cell-vaw">iOS only</td>
+        </tr>
+        <tr>
+          <td>Channel</td>
+          <td class="cell-vut">Email</td>
+          <td class="cell-vaw">In-app</td>
+        </tr>
+        <tr>
+          <td>Prov. exclusion</td>
+          <td class="cell-vut">No</td>
+          <td class="cell-vaw">Yes</td>
+        </tr>
+        <tr>
+          <td>Mobile engagement</td>
+          <td class="cell-vut">No gate</td>
+          <td class="cell-vaw">1+ login / 30d</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout-box callout-red">
+      <span class="callout-label">Recommendation:</span>
+      Discontinue &mdash; redirect audience to VAW
+    </div>
+  </div>
+
+  <!-- ─── RIGHT: VAW ─── -->
+  <div class="panel panel-right">
+    <div class="panel-title">
+      VAW &mdash; All 11 Cohorts Significant, Most Efficient Campaign
+    </div>
+
+    <div class="chart-placeholder">
+      &#9634; Vintage curves &mdash; VAW (11 cohorts, consistent lift)
+    </div>
+
+    <div class="section-label">Efficiency</div>
+    <div class="kpi-row">
+      <div class="kpi-card kpi-teal">
+        <div class="kpi-number">38</div>
+        <div class="kpi-label">deployments per<br>incremental client</div>
+      </div>
+      <div class="kpi-card kpi-blue">
+        <div class="kpi-number">10,740</div>
+        <div class="kpi-label">incremental<br>clients</div>
+      </div>
+      <div class="kpi-card kpi-ocean">
+        <div class="kpi-number">11/11</div>
+        <div class="kpi-label">cohorts<br>significant</div>
+      </div>
+    </div>
+
+    <div class="sparkline-section">
+      <div class="sparkline-title">Lift stable ~2.0pp across 11 cohorts (Apr 2025 &ndash; Feb 2026)</div>
+      <div style="position:relative;">
+        <div class="sparkline-row">
+          <!-- 11 bars, heights proportional to lift ~1.7-2.4pp range, normalized to 36px max -->
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:28px;" title="Apr: 1.85pp"></div><div class="spark-label">Apr</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:30px;" title="May: 1.95pp"></div><div class="spark-label">May</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:32px;" title="Jun: 2.08pp"></div><div class="spark-label">Jun</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:29px;" title="Jul: 1.90pp"></div><div class="spark-label">Jul</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:36px;" title="Aug: 2.35pp"></div><div class="spark-label">Aug</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:31px;" title="Sep: 2.02pp"></div><div class="spark-label">Sep</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:30px;" title="Oct: 1.97pp"></div><div class="spark-label">Oct</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:33px;" title="Nov: 2.15pp"></div><div class="spark-label">Nov</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:28px;" title="Dec: 1.82pp"></div><div class="spark-label">Dec</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:31px;" title="Jan: 2.00pp"></div><div class="spark-label">Jan</div></div>
+          <div class="spark-bar-wrap"><div class="spark-bar" style="height:30px;" title="Feb: 1.95pp"></div><div class="spark-label">Feb</div></div>
+        </div>
+        <div class="spark-mean-line">
+          <span class="spark-mean-tag">avg 2.0pp</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-box callout-teal">
+      <span class="callout-label">Opportunity:</span>
+      Investigate Android / Google Pay expansion
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════ FOOTER ═══════════════════ -->
+<div class="footer">
+  VVD Campaign Measurement &ensp;|&ensp; Q3 FY2025 &ndash; Q2 FY2026
+</div>
+
+</body>
+</html>
