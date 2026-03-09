@@ -157,12 +157,48 @@ acq_total_cohort = acq_clients.groupBy("MNE", "COHORT", "TST_GRP_CD").agg(F.coun
 
 acq_result_cohort = (
     acq_total_cohort.join(acq_summary_cohort, ["MNE", "COHORT", "TST_GRP_CD"], "left")
+    .fillna(0, subset=["clients_with_spend", "txn_count", "total_spend",
+                        "avg_txn_amt", "avg_txn_per_client", "avg_spend_per_client"])
     .withColumn("pct_with_spend", F.col("clients_with_spend") / F.col("total_acquirers") * 100)
     .orderBy("MNE", "COHORT", "TST_GRP_CD")
 )
 
 print("\nPost-acquisition spending BY COHORT (within treatment window):")
 acq_result_cohort.show(100, truncate=False)
+
+# --- 6-month average (last 6 cohorts per MNE x TST_GRP_CD) ---
+# Rank cohorts descending within each MNE, keep last 6
+_cohort_window = Window.partitionBy("MNE", "TST_GRP_CD").orderBy(F.col("COHORT").desc())
+acq_cohort_ranked = acq_result_cohort.withColumn("_rank", F.row_number().over(_cohort_window))
+
+acq_last6 = acq_cohort_ranked.filter(F.col("_rank") <= 6).drop("_rank")
+
+acq_avg_6m = (
+    acq_last6
+    .groupBy("MNE", "TST_GRP_CD")
+    .agg(
+        F.sum("total_acquirers").alias("total_acquirers"),
+        F.sum("clients_with_spend").alias("clients_with_spend"),
+        F.sum("txn_count").alias("txn_count"),
+        F.sum("total_spend").alias("total_spend"),
+        F.avg("avg_txn_amt").alias("avg_txn_amt"),
+    )
+    .withColumn("avg_txn_per_client",
+                F.when(F.col("clients_with_spend") > 0,
+                       F.col("txn_count") / F.col("clients_with_spend")).otherwise(0))
+    .withColumn("avg_spend_per_client",
+                F.when(F.col("clients_with_spend") > 0,
+                       F.col("total_spend") / F.col("clients_with_spend")).otherwise(0))
+    .withColumn("pct_with_spend", F.col("clients_with_spend") / F.col("total_acquirers") * 100)
+    .withColumn("COHORT", F.lit("AVG_6M"))
+    .select(acq_result_cohort.columns)
+)
+
+# Append the 6-month average row to the cohort output
+acq_result_cohort = acq_result_cohort.unionByName(acq_avg_6m).orderBy("MNE", "COHORT", "TST_GRP_CD")
+
+print("\n6-month average appended (COHORT=AVG_6M):")
+acq_avg_6m.show(20, truncate=False)
 
 # --- Overall (aggregate across cohorts) ---
 acq_summary = (
@@ -176,6 +212,8 @@ acq_total = acq_clients.groupBy("MNE", "TST_GRP_CD").agg(F.countDistinct("CLNT_N
 
 acq_result = (
     acq_total.join(acq_summary, ["MNE", "TST_GRP_CD"], "left")
+    .fillna(0, subset=["clients_with_spend", "txn_count", "total_spend",
+                        "avg_txn_amt", "avg_txn_per_client", "avg_spend_per_client"])
     .withColumn("pct_with_spend", F.col("clients_with_spend") / F.col("total_acquirers") * 100)
     .orderBy("MNE", "TST_GRP_CD")
 )
@@ -703,6 +741,278 @@ print(f"\nVelocity curve data: {len(velocity_pd):,} rows")
 print("Columns: MNE, COHORT, TST_GRP_CD, DAY, avg_cum_spend_per_client, total_clients")
 print("Use this for Plotly/matplotlib line charts (Action vs Control per campaign per cohort)")
 
+# ============================================================
+# CELL 6b: VUI PRE/POST SPENDING (NEW — required for Mega Deep Dive)
+# VUI nudges existing cardholders to transact more.
+# No "success event" — the population IS the denominator.
+# PRE: 30 days before treatment start
+# POST: treatment start to treatment end
+# ============================================================
+
+print("=" * 60)
+print("VUI PRE/POST SPENDING")
+print("=" * 60)
+
+vui_clients = (
+    result_df
+    .filter(F.col("MNE") == "VUI")
+    .select("CLNT_NO", "MNE", "TST_GRP_CD", "TREATMT_STRT_DT", "TREATMT_END_DT")
+    .withColumn("COHORT", F.date_format(F.col("TREATMT_STRT_DT"), "yyyy-MM"))
+    .dropDuplicates(["CLNT_NO", "MNE"])
+)
+
+vui_txn = vui_clients.join(pos_df, "CLNT_NO", "inner")
+
+vui_pre = (
+    vui_txn
+    .filter(F.col("TXN_DT") < F.col("TREATMT_STRT_DT"))
+    .filter(F.col("TXN_DT") >= F.expr("date_sub(TREATMT_STRT_DT, 30)"))
+    .withColumn("PERIOD", F.lit("PRE"))
+)
+
+vui_post = (
+    vui_txn
+    .filter(F.col("TXN_DT") >= F.col("TREATMT_STRT_DT"))
+    .filter(F.col("TXN_DT") <= F.col("TREATMT_END_DT"))
+    .withColumn("PERIOD", F.lit("POST"))
+)
+
+vui_combined = vui_pre.unionByName(vui_post)
+
+_vui_agg_cols = [
+    F.countDistinct("CLNT_NO").alias("clients_with_spend"),
+    F.count("*").alias("txn_count"),
+    F.sum("TXN_AMT").alias("total_spend"),
+    (F.count("*") / F.countDistinct("CLNT_NO")).alias("avg_txn_per_client"),
+    (F.sum("TXN_AMT") / F.countDistinct("CLNT_NO")).alias("avg_spend_per_client"),
+]
+
+vui_summary_cohort = (
+    vui_combined
+    .groupBy("MNE", "COHORT", "TST_GRP_CD", "PERIOD")
+    .agg(*_vui_agg_cols)
+    .orderBy("MNE", "COHORT", "TST_GRP_CD", "PERIOD")
+)
+
+vui_total_cohort = (
+    vui_clients
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .agg(F.countDistinct("CLNT_NO").alias("total_clients"))
+)
+
+print("\nVUI pre/post spending BY COHORT:")
+vui_summary_cohort.show(100, truncate=False)
+print("\nVUI total clients BY COHORT:")
+vui_total_cohort.show(50, truncate=False)
+
+
+# ============================================================
+# CELL 6c: MEGA DEEP DIVE OUTPUT
+# Unified DataFrame: ALL 6 campaigns, ALL cohorts, PRE/POST.
+# One row per MNE x COHORT x TST_GRP_CD x PERIOD.
+# ============================================================
+
+print("=" * 60)
+print("MEGA DEEP DIVE — UNIFIED OUTPUT")
+print("=" * 60)
+
+# --- VCN (POST only, from acq_result_cohort) ---
+# acq_result_cohort has AVG_6M rows already — exclude them, we'll recompute
+vcn_mega = (
+    acq_result_cohort
+    .filter((F.col("MNE") == "VCN") & (F.col("COHORT") != "AVG_6M"))
+    .select(
+        F.col("MNE"),
+        F.col("COHORT"),
+        F.col("TST_GRP_CD"),
+        F.lit("POST").alias("PERIOD"),
+        F.col("total_acquirers").alias("success_count"),
+        F.col("clients_with_spend"),
+        F.col("pct_with_spend"),
+        F.col("txn_count"),
+        F.col("total_spend"),
+        F.col("avg_spend_per_client"),
+        F.col("avg_txn_per_client"),
+    )
+)
+
+# --- VDA (POST only, from acq_result_cohort) ---
+vda_mega = (
+    acq_result_cohort
+    .filter((F.col("MNE") == "VDA") & (F.col("COHORT") != "AVG_6M"))
+    .select(
+        F.col("MNE"),
+        F.col("COHORT"),
+        F.col("TST_GRP_CD"),
+        F.lit("POST").alias("PERIOD"),
+        F.col("total_acquirers").alias("success_count"),
+        F.col("clients_with_spend"),
+        F.col("pct_with_spend"),
+        F.col("txn_count"),
+        F.col("total_spend"),
+        F.col("avg_spend_per_client"),
+        F.col("avg_txn_per_client"),
+    )
+)
+
+# --- VDT (POST only, from act_result_cohort) ---
+vdt_mega = (
+    act_result_cohort
+    .select(
+        F.col("MNE"),
+        F.col("COHORT"),
+        F.col("TST_GRP_CD"),
+        F.lit("POST").alias("PERIOD"),
+        F.col("total_activators").alias("success_count"),
+        F.col("clients_with_spend"),
+        F.col("pct_with_spend"),
+        F.col("txn_count"),
+        F.col("total_spend"),
+        F.col("avg_spend_per_client"),
+        F.col("avg_txn_per_client"),
+    )
+)
+
+# --- VUI (PRE and POST, from vui_summary_cohort + vui_total_cohort) ---
+# VUI success_count = total experiment clients (not a success event)
+vui_mega = (
+    vui_summary_cohort
+    .join(vui_total_cohort, ["MNE", "COHORT", "TST_GRP_CD"], "left")
+    .select(
+        F.col("MNE"),
+        F.col("COHORT"),
+        F.col("TST_GRP_CD"),
+        F.col("PERIOD"),
+        F.col("total_clients").alias("success_count"),
+        F.col("clients_with_spend"),
+        (F.col("clients_with_spend") / F.col("total_clients") * 100).alias("pct_with_spend"),
+        F.col("txn_count"),
+        F.col("total_spend"),
+        F.col("avg_spend_per_client"),
+        F.col("avg_txn_per_client"),
+    )
+)
+
+# --- VUT (PRE and POST, from prov_summary_cohort + prov_clients count) ---
+# prov_summary_cohort has "clients" = clients with spend, need provisioned_clients total
+prov_total_cohort = (
+    prov_clients
+    .groupBy("MNE", "COHORT", "TST_GRP_CD")
+    .agg(F.countDistinct("CLNT_NO").alias("provisioned_clients"))
+)
+
+vut_mega = (
+    prov_summary_cohort
+    .filter(F.col("MNE") == "VUT")
+    .join(prov_total_cohort.filter(F.col("MNE") == "VUT"), ["MNE", "COHORT", "TST_GRP_CD"], "left")
+    .select(
+        F.col("MNE"),
+        F.col("COHORT"),
+        F.col("TST_GRP_CD"),
+        F.col("PERIOD"),
+        F.col("provisioned_clients").alias("success_count"),
+        F.col("clients").alias("clients_with_spend"),
+        (F.col("clients") / F.col("provisioned_clients") * 100).alias("pct_with_spend"),
+        F.col("txn_count"),
+        F.col("total_spend"),
+        F.col("avg_spend_per_client"),
+        F.col("avg_txn_per_client"),
+    )
+)
+
+# --- VAW (PRE and POST, from prov_summary_cohort + prov_clients count) ---
+vaw_mega = (
+    prov_summary_cohort
+    .filter(F.col("MNE") == "VAW")
+    .join(prov_total_cohort.filter(F.col("MNE") == "VAW"), ["MNE", "COHORT", "TST_GRP_CD"], "left")
+    .select(
+        F.col("MNE"),
+        F.col("COHORT"),
+        F.col("TST_GRP_CD"),
+        F.col("PERIOD"),
+        F.col("provisioned_clients").alias("success_count"),
+        F.col("clients").alias("clients_with_spend"),
+        (F.col("clients") / F.col("provisioned_clients") * 100).alias("pct_with_spend"),
+        F.col("txn_count"),
+        F.col("total_spend"),
+        F.col("avg_spend_per_client"),
+        F.col("avg_txn_per_client"),
+    )
+)
+
+# --- UNION ALL ---
+mega_deep = (
+    vcn_mega
+    .unionByName(vda_mega)
+    .unionByName(vdt_mega)
+    .unionByName(vui_mega)
+    .unionByName(vut_mega)
+    .unionByName(vaw_mega)
+)
+
+# --- AVG_6M summary rows ---
+# For each MNE x TST_GRP_CD x PERIOD, rank cohorts descending, take last 6, weighted avg
+_mega_window = Window.partitionBy("MNE", "TST_GRP_CD", "PERIOD").orderBy(F.col("COHORT").desc())
+mega_ranked = mega_deep.withColumn("_rank", F.row_number().over(_mega_window))
+mega_last6 = mega_ranked.filter(F.col("_rank") <= 6).drop("_rank")
+
+mega_avg_6m = (
+    mega_last6
+    .groupBy("MNE", "TST_GRP_CD", "PERIOD")
+    .agg(
+        F.sum("success_count").alias("success_count"),
+        F.sum("clients_with_spend").alias("clients_with_spend"),
+        F.sum("txn_count").alias("txn_count"),
+        F.sum("total_spend").alias("total_spend"),
+    )
+    .withColumn("pct_with_spend",
+                F.when(F.col("success_count") > 0,
+                       F.col("clients_with_spend") / F.col("success_count") * 100).otherwise(0))
+    .withColumn("avg_spend_per_client",
+                F.when(F.col("clients_with_spend") > 0,
+                       F.col("total_spend") / F.col("clients_with_spend")).otherwise(0))
+    .withColumn("avg_txn_per_client",
+                F.when(F.col("clients_with_spend") > 0,
+                       F.col("txn_count") / F.col("clients_with_spend")).otherwise(0))
+    .withColumn("COHORT", F.lit("AVG_6M"))
+    .select("MNE", "COHORT", "TST_GRP_CD", "PERIOD",
+            "success_count", "clients_with_spend", "pct_with_spend",
+            "txn_count", "total_spend", "avg_spend_per_client", "avg_txn_per_client")
+)
+
+# Append AVG_6M and sort
+mega_deep = (
+    mega_deep
+    .unionByName(mega_avg_6m)
+    .fillna(0, subset=["success_count", "clients_with_spend", "pct_with_spend",
+                        "txn_count", "total_spend", "avg_spend_per_client", "avg_txn_per_client"])
+    .orderBy("MNE", "PERIOD", "COHORT", "TST_GRP_CD")
+)
+
+# --- VERIFICATION ---
+print("\nMega Deep Dive columns:")
+print(mega_deep.columns)
+
+print("\nCampaign x Period breakdown:")
+(
+    mega_deep
+    .filter(F.col("COHORT") != "AVG_6M")
+    .groupBy("MNE", "PERIOD")
+    .agg(F.countDistinct("COHORT").alias("cohorts"), F.sum("success_count").alias("total_success"))
+    .orderBy("MNE", "PERIOD")
+    .show(20, truncate=False)
+)
+
+print("\nAVG_6M rows:")
+mega_deep.filter(F.col("COHORT") == "AVG_6M").show(30, truncate=False)
+
+print(f"\nMega Deep Dive total rows: {mega_deep.count()}")
+mega_deep.show(200, truncate=False)
+
+# --- EXPORT ---
+download_csv(mega_deep, "vvd_v2_mega_deep_dive.csv")
+
+
 # ── EXPORT ALL RESULTS ──
 deep_analysis_sheets = {}
 
@@ -731,6 +1041,12 @@ if 'overall_rates' in dir(): deep_analysis_sheets["Overall Rates"] = overall_rat
 
 # Cell 6 — Velocity
 if 'velocity_pd' in dir(): deep_analysis_sheets["Spend Velocity"] = velocity_pd
+
+# Cell 6b — VUI
+if 'vui_summary_cohort' in dir(): deep_analysis_sheets["VUI Pre-Post Cohort"] = vui_summary_cohort
+
+# Cell 6c — Mega Deep Dive
+if 'mega_deep' in dir(): deep_analysis_sheets["Mega Deep Dive"] = mega_deep
 
 if deep_analysis_sheets:
     download_excel(deep_analysis_sheets, "vvd_v2_deep_analysis.xlsx")
