@@ -7,16 +7,16 @@
 ### Plot Title
 **No Significant Effect | +0.02pp (p=0.91)** — Single Email Blast to 785K Clients, Zero Measurable Effect
 
-NO NIBT — not significant. v1 showed -18x ROI.
+NO NIBT — not significant.
 
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Zero Lift, Confirmed Twice
+### Zero Lift
 
-VUT was a single email blast to 785K clients with no measurable effect. Action rate 13.8% vs Control 13.8% — nearly identical. Both v1 and v2 confirm zero lift (+0.02pp, p=0.91).
+Single email blast to 785K clients. Action rate 13.8% vs Control 13.8% — no measurable effect (+0.02pp, p=0.91).
 
-**Recommendation**: Discontinue. Redirect deployments to higher-impact campaigns. If wallet provisioning is a priority, invest in expanding VAW (which works).
+**Recommendation**: Discontinue. Redirect deployments to higher-impact campaigns. If wallet provisioning is a priority, invest in expanding VAW.
 
 ---
 
