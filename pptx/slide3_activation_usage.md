@@ -41,17 +41,19 @@ NO NIBT — not significant.
 
 ### Underpowered by Design, Not Necessarily Failed
 
-VUI's control group is ~580-720 clients per cohort — far too small. Minimum detectable lift at this sample size is 1.29pp. If the true effect is below that, VUI will never detect it.
+VUI's control group is ~600 clients per cohort. With that sample size, a cohort needs roughly **+3.9pp lift** to reach statistical significance. Even the strongest cohort (Feb 2026, +3.61pp) falls just short at p=0.073.
 
-Baseline usage is 33% — one in three clients transact organically without any messaging.
+Baseline usage is 33% — one in three clients transact organically without any messaging. The campaign is trying to move a metric that already happens at high rates.
 
-October 2025 deep dive diagnosed the power problem and recommended three changes:
-1. Expand target population — 81% excluded because activation >61 days ago
-2. Increase control from 5% to 15% — reduces min detectable lift from 1.29% to 0.78%
-3. Relax 365-day resting rule to 30 days
+Increasing control from 5% to 15% would give ~4,200 control clients per cohort, bringing the detectable threshold down to ~1.5pp — well within the range of observed lifts.
+
+October 2025 deep dive recommended three changes:
+1. **Expand target population** — 81% of eligible clients are excluded because their activation was >61 days ago
+2. **Increase control from 5% to 15%** — brings detectable threshold from ~3.9pp to ~1.5pp per cohort
+3. **Relax 365-day resting rule to 30 days** — allows more re-engagement
 
 Implementation status of all three: **Unknown**.
 
-233K same-day email duplicates detected (system bug — multiple qualifying transactions trigger multiple emails on same day).
+233K same-day email duplicates detected — a system bug where multiple qualifying transactions trigger multiple emails to the same client on the same day.
 
-**Recommendation**: Cannot conclude campaign doesn't work — measurement design prevents detection. Implement Oct 2025 recommendations, re-measure one quarter. If still not significant, consider discontinuation or pivot to in-app only.
+**Recommendation**: The measurement design cannot detect effects below ~3.9pp per cohort. Increasing control to 15% is the single highest-impact fix. Implement Oct 2025 recommendations, re-measure one quarter. If still not significant with adequate power, consider discontinuation or pivot to in-app only.
