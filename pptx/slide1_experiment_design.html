@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VVD Experiment Design Overview</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    background: #f5f5f5;
+    color: #1a1a1a;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .header {
+    background: #003168;
+    color: #fff;
+    padding: 28px 40px 22px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  .header p {
+    font-size: 13px;
+    color: #b0c4de;
+    margin-top: 4px;
+    font-weight: 400;
+  }
+
+  .content {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 40px 16px;
+  }
+
+  .stage-group {
+    margin-bottom: 20px;
+  }
+  .stage-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 8px;
+    padding-left: 2px;
+  }
+  .stage-label.acquisition { color: #0051A5; }
+  .stage-label.activation  { color: #00857C; }
+  .stage-label.usage        { color: #F5A623; }
+  .stage-label.wallet       { color: #7B61FF; }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 12px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 6px;
+    padding: 18px 20px 16px;
+    border-left: 4px solid #ccc;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .card.acquisition { border-left-color: #0051A5; }
+  .card.activation  { border-left-color: #00857C; }
+  .card.usage        { border-left-color: #F5A623; }
+  .card.wallet       { border-left-color: #7B61FF; }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .campaign-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #003168;
+  }
+  .campaign-name .mne {
+    font-weight: 400;
+    color: #666;
+    font-size: 13px;
+  }
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .badge.trigger { background: #e8f4f8; color: #0a6c7a; }
+  .badge.batch   { background: #fff3e0; color: #8a6200; }
+  .badge.monthly { background: #f0e6ff; color: #5a3d8a; }
+
+  .config-line {
+    font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+    font-size: 12px;
+    color: #444;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 3px;
+  }
+  .config-line .sep { color: #bbb; margin: 0 4px; }
+
+  .details {
+    font-size: 13px;
+    color: #333;
+  }
+  .details dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+  }
+  .details dt {
+    font-weight: 600;
+    color: #555;
+    font-size: 12px;
+    white-space: nowrap;
+    padding-top: 1px;
+  }
+  .details dd {
+    font-size: 12.5px;
+    color: #333;
+  }
+  .details dd code {
+    font-family: 'Consolas', 'Cascadia Code', monospace;
+    font-size: 11.5px;
+    background: #f0f0f0;
+    padding: 0 4px;
+    border-radius: 2px;
+    color: #444;
+  }
+
+  .numbers {
+    display: inline;
+    font-weight: 600;
+    color: #003168;
+  }
+
+  .footer {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 8px 40px 28px;
+  }
+  .footer-bar {
+    background: #fff;
+    border-radius: 6px;
+    padding: 14px 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-top: 2px solid #003168;
+  }
+  .footer-bar ol {
+    list-style: none;
+    counter-reset: fn;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 28px;
+  }
+  .footer-bar li {
+    counter-increment: fn;
+    font-size: 11.5px;
+    color: #555;
+    line-height: 1.4;
+  }
+  .footer-bar li::before {
+    content: counter(fn) ".";
+    font-weight: 700;
+    color: #003168;
+    margin-right: 5px;
+  }
+
+  @media (max-width: 600px) {
+    .content, .footer { padding-left: 16px; padding-right: 16px; }
+    .header { padding: 20px 16px; }
+    .cards { grid-template-columns: 1fr; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .content, .footer { padding-left: 20px; padding-right: 20px; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+    .footer-bar { box-shadow: none; border: 1px solid #ddd; }
+    .stage-group { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VVD Experiment Design Overview</h1>
+  <p>Six independent A/B tests &mdash; Virtual Visa Debit card communications &mdash; Jan 2025 to Feb 2026</p>
+</div>
+
+<div class="content">
+
+  <!-- ACQUISITION -->
+  <div class="stage-group">
+    <div class="stage-label acquisition">Acquisition</div>
+    <div class="cards">
+
+      <div class="card acquisition">
+        <div class="card-header">
+          <span class="campaign-name">Contextual Notification <span class="mne">VCN</span></span>
+          <span class="badge trigger">Monthly trigger</span>
+        </div>
+        <div class="config-line">
+          MB (mobile push)<span class="sep">|</span>95 / 5 split<span class="sep">|</span>30-day window
+        </div>
+        <div class="details">
+          <dl>
+            <dt>Segments</dt>
+            <dd>Age of Majority (<code>PVCNAG01</code>), Student 14+ (<code>PVCNAG02</code>)</dd>
+            <dt>Cohorts</dt>
+            <dd>12 (Feb 2025 &ndash; Feb 2026). <span class="numbers">~2.0M action</span> / <span class="numbers">~109K control</span></dd>
+            <dt>Target</dt>
+            <dd>Non-VVD-holders. Static control group (SRF-based)</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card acquisition">
+        <div class="card-header">
+          <span class="campaign-name">Seasonal Acquisition <span class="mne">VDA</span></span>
+          <span class="badge batch">Seasonal batch</span>
+        </div>
+        <div class="config-line">
+          EM+IM / IM (Banner/O&amp;O)<span class="sep">|</span>95 / 5 split<span class="sep">|</span>90-day window
+        </div>
+        <div class="details">
+          <dl>
+            <dt>Channel arms</dt>
+            <dd><code>PVDAAG03</code> Email + Banner (250K cap), <code>PVDAAG04</code> Banner/O&amp;O only (no cap)</dd>
+            <dt>Cohorts</dt>
+            <dd>2 (Jul 2025, Nov 2025). <span class="numbers">~895K action</span> / <span class="numbers">~78K control</span></dd>
+            <dt>Target</dt>
+            <dd>Non-VVD-holders. Tenure-based prioritization (&le;8 years for email)</dd>
+          </dl>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ACTIVATION -->
+  <div class="stage-group">
+    <div class="stage-label activation">Activation</div>
+    <div class="cards">
+
+      <div class="card activation">
+        <div class="card-header">
+          <span class="campaign-name">Activation Trigger <span class="mne">VDT</span></span>
+          <span class="badge trigger">Activity trigger</span>
+        </div>
+        <div class="config-line">
+          Email (DO fallback)<span class="sep">|</span>90 / 10 split<span class="sep">|</span>30-day window
+        </div>
+        <div class="details">
+          <dl>
+            <dt>Report groups</dt>
+            <dd>6 &mdash; Student/Non-Student &times; Activation/Reminder &times; EM/DO</dd>
+            <dt>Cohorts</dt>
+            <dd>14 (Jan 2025 &ndash; Feb 2026). <span class="numbers">~130K action</span> / <span class="numbers">~14K control</span></dd>
+            <dt>Target</dt>
+            <dd>~5% of VVD cards that don't auto-activate. Static control (SRF-based)</dd>
+          </dl>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- USAGE -->
+  <div class="stage-group">
+    <div class="stage-label usage">Usage</div>
+    <div class="cards">
+
+      <div class="card usage">
+        <div class="card-header">
+          <span class="campaign-name">Usage Trigger <span class="mne">VUI</span></span>
+          <span class="badge trigger">Activity trigger</span>
+        </div>
+        <div class="config-line">
+          EM+IM / EM / IM<span class="sep">|</span>95 / 5 split<span class="sep">|</span>30-day window
+        </div>
+        <div class="details">
+          <dl>
+            <dt>Report groups</dt>
+            <dd>4 active &mdash; AoM &times; (EM+IM, EM, IM) + Student EM</dd>
+            <dt>Cohorts</dt>
+            <dd>13 (Feb 2025 &ndash; Feb 2026). <span class="numbers">~149K action</span> / <span class="numbers">~8K control</span></dd>
+            <dt>Target</dt>
+            <dd>Cardholders who activated in last 60 days but haven't transacted</dd>
+          </dl>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- WALLET PROVISIONING -->
+  <div class="stage-group">
+    <div class="stage-label wallet">Wallet Provisioning</div>
+    <div class="cards">
+
+      <div class="card wallet">
+        <div class="card-header">
+          <span class="campaign-name">Tokenization <span class="mne">VUT</span></span>
+          <span class="badge batch">One-time batch</span>
+        </div>
+        <div class="config-line">
+          Email<span class="sep">|</span>95 / 5 split<span class="sep">|</span>90-day window
+        </div>
+        <div class="details">
+          <dl>
+            <dt>Report group</dt>
+            <dd>Single &mdash; <code>PVUTAG01</code> (Age of Majority, EM only)</dd>
+            <dt>Cohorts</dt>
+            <dd>1 (Jun 2025). <span class="numbers">~785K action</span> / <span class="numbers">~41K control</span></dd>
+            <dt>Target</dt>
+            <dd>Existing VVD users to add card to digital wallet</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card wallet">
+        <div class="card-header">
+          <span class="campaign-name">Add To Wallet <span class="mne">VAW</span></span>
+          <span class="badge monthly">Monthly</span>
+        </div>
+        <div class="config-line">
+          In-app (iOS only)<span class="sep">|</span>80 / 20 split<span class="sep">|</span>30-day window
+        </div>
+        <div class="details">
+          <dl>
+            <dt>Report group</dt>
+            <dd>Single &mdash; <code>PVAWAG01</code> (IM)</dd>
+            <dt>Cohorts</dt>
+            <dd>10 (Apr 2025 &ndash; Feb 2026). <span class="numbers">~402K action</span> / <span class="numbers">~100K control</span></dd>
+            <dt>Target</dt>
+            <dd>Active VVD users (purchase in last 60 days), mobile-engaged, never provisioned</dd>
+          </dl>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <div class="footer-bar">
+    <ol>
+      <li>Action group receives communication. Control group does not (organic behavior).</li>
+      <li>No formal orchestration between campaigns. Each operates independently.</li>
+      <li>Static control groups (VCN, VDT) use client SRF for persistent holdout.</li>
+    </ol>
+  </div>
+</div>
+
+</body>
+</html>
