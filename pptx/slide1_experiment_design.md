@@ -120,3 +120,10 @@ VAW and VUT target the same outcome (wallet provisioning) but differ fundamental
 3. **Static control groups** (VCN, VDT) use client SRF last digits for persistent holdout, enabling cumulative impact measurement across repeated contacts.
 4. **VUI → VUT resting rule**: VUT excludes clients targeted by VUI in the last 90 days. This is the only explicit cross-campaign dependency.
 5. **Student segments** were removed from VUT (all 5 groups) and VUI (2 groups) during config revisions, but remain active in VCN (AG02), VDT (AG01, AG11), and VUI (AG04).
+
+---
+
+## Presenter Notes
+
+### VDT Double-Counting (if asked)
+VDT has two waves sharing a single static control group: activation email (day 7) and reminder email (day 15). When rolling up to MNE level, the same client can appear in both waves, inflating raw counts. However, this double-counting is **symmetric** — both Action and Control groups are equally inflated — so success **rates** and **lift** remain unbiased. Per-RPT_GRP_CD analysis is clean (no overlap). Bottom line: MNE-level rollup is valid for rates and lift; just don't sum raw client counts across waves.
