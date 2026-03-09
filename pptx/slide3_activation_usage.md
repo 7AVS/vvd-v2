@@ -12,14 +12,23 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Email Is the Only Channel That Works
+### VDT Results
 
-| Channel | Deployments | Clients | Action Rate | Lift | Sig |
-|---------|------------|---------|-------------|------|-----|
-| EM | 703,005 | 112,914 | 61.16% | +4.75pp | Yes |
-| DO | 20,561 | 19,564 | 57.53% | +1.13pp | No |
+| Metric | Value |
+|--------|-------|
+| Action clients | 132,015 |
+| Control clients | 14,703 |
+| Deployments | 723,566 |
+| Action rate | 61.05% |
+| Control rate | 56.40% |
+| Lift | **+4.65pp** (p=0.0001) |
+| Incremental activations | **6,138** |
+| Cohorts significant | **13 of 15** |
+| Dec 2025 | +3.51pp |
+| Jan 2026 | +4.57pp |
+| Feb 2026 | +4.85pp |
 
-97% of deployments go through email. Email open rate: 65-80%. Click rate: 1-7% — clients don't need to click through, the nudge alone triggers activation.
+Two-stage email: day 7 activation + day 15 reminder for non-activators. 118 deployments per incremental activation.
 
 **Recommendation**: Protect VDT. Investigate third nudge (day 21) for remaining non-activators.
 
