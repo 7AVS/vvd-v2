@@ -1,15 +1,10 @@
 # Adhoc: channel-level significance — MNE × TACTIC_CELL_CD rates + lift + z-test
-# Control groups have TACTIC_CELL_CD=XX (not communicated), so we compute
-# Action rates per channel and compare each against the MNE-level Control rate.
 import pandas as pd
 
-# Action: group by MNE × TACTIC_CELL_CD
-action_agg = (
+ch_agg = (
     result_df
-    .filter(F.trim("TST_GRP_CD") == ACTION_GROUP)
-    .filter(F.trim("TACTIC_CELL_CD") != "XX")
     .withColumn("CHANNEL", F.trim("TACTIC_CELL_CD"))
-    .groupBy("MNE", "CHANNEL")
+    .groupBy("MNE", "CHANNEL", "TST_GRP_CD")
     .agg(
         F.count("*").alias("deployments"),
         F.countDistinct("CLNT_NO").alias("clients"),
@@ -18,35 +13,21 @@ action_agg = (
     .collect()
 )
 
-# Control: group by MNE only (channel-agnostic holdout)
-control_agg = (
-    result_df
-    .filter(F.trim("TST_GRP_CD") == CONTROL_GROUP)
-    .groupBy("MNE")
-    .agg(
-        F.count("*").alias("deployments"),
-        F.countDistinct("CLNT_NO").alias("clients"),
-        F.sum("SUCCESS").alias("successes"),
-    )
-    .collect()
-)
-
-ctrl = {}
-for r in control_agg:
-    ctrl[str(r.MNE)] = {
+ch_data = {}
+for r in ch_agg:
+    key = (str(r.MNE), str(r.CHANNEL))
+    ch_data.setdefault(key, {})[str(r.TST_GRP_CD).strip()] = {
         "deployments": int(r.deployments),
         "clients": int(r.clients),
         "successes": int(r.successes),
     }
 
 ch_rows = []
-for r in action_agg:
-    mne = str(r.MNE)
-    channel = str(r.CHANNEL)
-    c = ctrl.get(mne)
-    if not c:
+for (mne, channel), groups in sorted(ch_data.items()):
+    a = groups.get(ACTION_GROUP)
+    c = groups.get(CONTROL_GROUP)
+    if not a or not c:
         continue
-    a = {"deployments": int(r.deployments), "clients": int(r.clients), "successes": int(r.successes)}
     a_rate = a["successes"] / a["deployments"] * 100 if a["deployments"] > 0 else 0
     c_rate = c["successes"] / c["deployments"] * 100 if c["deployments"] > 0 else 0
     abs_lift = a_rate - c_rate
