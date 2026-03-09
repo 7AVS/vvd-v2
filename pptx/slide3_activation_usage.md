@@ -12,16 +12,18 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### The Emails Accelerate Activation — They Don't Create It
+### 4 of 6 Report Groups Significant — All Email
 
-Overall: Action 61.05% vs Control 56.40% = **+4.65pp, 6.1K incremental activations**. Recent cohorts strengthening: Dec–Feb +3.5pp to +4.9pp.
+| Group | Channel | Lift | Sig |
+|-------|---------|------|-----|
+| AG01 Student | EM | +2.81pp | Yes |
+| AG03 Non-Student | EM | +4.80pp | Yes |
+| AG11 Student Reminder | EM | +5.38pp | Yes |
+| AG13 Non-Student Reminder | EM | +4.93pp | Yes |
+| AG02 Student | DO | -2.05pp | No |
+| AG04 Non-Student | DO | -0.12pp | No |
 
-| Segment | Action Day 30 |
-|---------|--------------|
-| Student EM (AG01) | 69.9% |
-| Non-Student EM (AG03) | 64.9% |
-
-Two-stage design: activation email (day 7) + reminder (day 15) for non-activators. On the curve, Action opens a gap early and holds it through the measurement window. Both groups reach high activation rates — the emails accelerate timing, not final outcome.
+Email open rate: 65-80%. Click rate: 1-7%. Clients open the email, don't click — then go activate on their own. The nudge works even without a click-through.
 
 **Recommendation**: Protect VDT. Investigate third nudge (day 21) for remaining non-activators.
 
