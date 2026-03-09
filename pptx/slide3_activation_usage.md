@@ -12,20 +12,18 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Acceleration, Not Creation
+### The Emails Accelerate Activation — They Don't Create It
 
-| Metric | Value |
-|--------|-------|
-| Day 30 gap | +4.65pp (Action ahead of Control) |
-| Day 90 gap | ~3pp (Control catches up) |
-| Day 90 activation | Action ~57%, Control ~54% |
-| Incremental activations | 6.1K |
-| Recent cohorts (Dec–Feb) | +3.5pp to +4.9pp (strengthening) |
-| DO fallback lift | ~0pp (email drives 100% of signal) |
+Overall: Action 61.05% vs Control 56.40% = **+4.65pp, 6.1K incremental activations**. Recent cohorts strengthening: Dec–Feb +3.5pp to +4.9pp.
 
-Both groups converge at ~55% by day 90 — the campaign changes **when** clients activate, not **whether**. Two-stage email design: day 7 activation + day 15 reminder for non-activators.
+| Segment | Action Day 30 |
+|---------|--------------|
+| Student EM (AG01) | 69.9% |
+| Non-Student EM (AG03) | 64.9% |
 
-**Recommendation**: Protect VDT. Drop DO fallback (zero lift). Investigate third nudge (day 21) to capture remaining non-activators.
+Two-stage design: activation email (day 7) + reminder (day 15) for non-activators. On the curve, Action opens a gap early and holds it through the measurement window. Both groups reach high activation rates — the emails accelerate timing, not final outcome.
+
+**Recommendation**: Protect VDT. Investigate third nudge (day 21) for remaining non-activators.
 
 ---
 
