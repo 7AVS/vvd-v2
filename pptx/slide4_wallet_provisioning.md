@@ -12,17 +12,11 @@ NO NIBT — not significant. v1 showed -18x ROI.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Three Structural Problems Killed VUT Before It Launched
+### Zero Lift, Confirmed Twice
 
-**1. The working channels were removed.** VUT was originally designed with 6 report groups across EM, IM, and EM_IM channels. During config revisions, 5 of 6 were eliminated — all student segments and all in-app channels. Only PVUTAG01 (Age of Majority, Email) survived. VAW's success with in-app messaging suggests the removed IM channels were the ones most likely to work for wallet provisioning. The campaign launched with the wrong channel.
+VUT was a single email blast to 785K clients with no measurable effect. Action rate 13.8% vs Control 13.8% — nearly identical. Both v1 and v2 confirm zero lift (+0.02pp, p=0.91).
 
-**2. One-time batch with no refresh.** VUT fired once in June 2025 and that's it. Wallet provisioning requires catching clients at the right moment — recent activity, current engagement, mobile context. A single blast to 785K clients hits most of them at the wrong time. VAW's monthly refresh solves this by continuously targeting freshly eligible clients.
-
-**3. The success definition has a known bug.** The SAS code references the wrong alias (Success02 instead of Success03) and uses a -30 day pre-treatment window that counts wallet activity before treatment start. This means some "successes" may not be real post-treatment outcomes.
-
-Action rate 13.8% vs Control 13.8% — nearly identical. Zero lift confirmed in both v1 and v2.
-
-**Recommendation**: Discontinue. Redirect 785K email deployments to higher-impact campaigns. If wallet provisioning is a priority, invest in expanding VAW (which works) rather than fixing VUT's structural problems.
+**Recommendation**: Discontinue. Redirect deployments to higher-impact campaigns. If wallet provisioning is a priority, invest in expanding VAW (which works).
 
 ---
 

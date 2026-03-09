@@ -12,28 +12,17 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### One Campaign, Two Nudges — The Reminder Is the Real Driver
+### Two-Stage Email Design Works as a Unit
 
-VDT is a single two-stage campaign (confirmed by config decision tree). Clients who don't activate after the first email (day 7) automatically receive a reminder (day 15). AG11/AG13 are a subset of AG01/AG03 — same clients, second attempt.
+VDT is a two-stage email campaign: clients who don't activate after the first email (day 7) automatically receive a reminder (day 15). We measure using AG01/AG03 (EM channel) only — the 30-day window from first email captures both emails' combined effect.
 
-**The reminder re-accelerates the curve.** On the MNE vintage curve, the action-control gap opens in the first 2 weeks (first email), slows around day 8, then widens again after day 8 when the reminder fires. Control has no such inflection — just steady organic activation.
+The combined two-stage design delivers +4.65pp lift and 6.1K incremental activations — the highest in the portfolio. Recent cohorts are strengthening (Dec–Feb: +3.5pp to +4.9pp), suggesting targeting is improving over time.
 
-Wave-level action-control gaps (cohort 2026-02):
-
-| Wave | Action Day 30 | Control Day 30 | Gap |
-|------|--------------|----------------|-----|
-| Activation (AG01, Student EM) | ~70% | ~65% | ~4.7pp |
-| Reminder (AG11, Student EM) | ~46% | ~37% | **~8.9pp** |
-| Activation (AG03, Non-Student EM) | ~65% | ~61% | ~3.7pp |
-| Reminder (AG13, Non-Student EM) | ~46% | ~37% | **~8.9pp** |
-
-The reminder gap (~9pp) is nearly 2x the activation gap (~4pp). Clients who don't respond to the first nudge respond even more strongly to the second. This is the most actionable finding in VDT: the campaign's value is in the follow-up, not the first contact.
-
-**DO fallback is a dead end.** AG02/AG04 (Digital Online) have negative lift (-3.1pp, -0.4pp) and never receive a reminder. Non-email-eligible clients get one failed attempt and nothing more.
+**EM is the only effective channel.** DO fallback (AG02/AG04) shows no measurable lift. Email drives 100% of VDT's signal.
 
 **Shrinking addressable market.** 95% of VVD cards auto-activate at issuance. VDT targets the remaining ~5%. As Card Type 03 (digital) grows from 47% today, this tail shrinks.
 
-**Recommendation**: The reminder is the real value driver — protect it. Investigate whether a third nudge (day 21?) could further lift the remaining non-activator tail. Model Card Type 03 growth for sunset planning. Consider dropping DO fallback (zero value, no reminder path).
+**Recommendation**: Investigate whether a third nudge (day 21?) could further lift the remaining non-activator tail. Model Card Type 03 growth for sunset planning. Consider dropping DO fallback (zero value).
 
 ---
 
