@@ -12,23 +12,14 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Performance by Channel
+### Email Is the Only Channel That Works
 
 | Channel | Deployments | Clients | Action Rate | Lift | Sig |
 |---------|------------|---------|-------------|------|-----|
 | EM | 703,005 | 112,914 | 61.16% | +4.75pp | Yes |
 | DO | 20,561 | 19,564 | 57.53% | +1.13pp | No |
 
-### Performance by Segment
-
-| Segment | Channel | Action Rate | Control Rate | Lift |
-|---------|---------|-------------|-------------|------|
-| Student | EM | 72.92% | 70.10% | +2.81pp |
-| Student | DO | 58.79% | 60.84% | -2.05pp |
-| Non-Student | EM | 66.82% | 62.02% | +4.80pp |
-| Non-Student | DO | 57.33% | 57.45% | -0.12pp |
-
-Email open rate: 65-80%. Click rate: 1-7%. Clients open the email, don't click — then go activate on their own. The nudge works even without a click-through.
+97% of deployments go through email. Email open rate: 65-80%. Click rate: 1-7% — clients don't need to click through, the nudge alone triggers activation.
 
 **Recommendation**: Protect VDT. Investigate third nudge (day 21) for remaining non-activators.
 
