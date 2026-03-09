@@ -12,20 +12,24 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Email Works, DO Fails — But the Market is Shrinking
+### The Reminder Is Twice as Effective as the First Email
 
-100% of VDT's signal comes from email. DO (Digital Online) fallback has zero or negative lift:
+VDT sends two emails: activation at day 7, reminder at day 15 (for non-activators). The vintage curves show the reminder wave opens a gap nearly 2x wider than the activation wave:
 
-| Channel | Lift Range | Significant |
-|---------|-----------|-------------|
-| Email (activation + reminder) | +3.03 to +5.38pp | All yes |
-| DO fallback | -3.06 to -0.41pp | None |
+| Wave | Action Day 30 | Control Day 30 | Gap |
+|------|--------------|----------------|-----|
+| Activation (AG01, Student EM) | ~70% | ~65% | ~4.7pp |
+| Reminder (AG11, Student EM) | ~46% | ~37% | **~8.9pp** |
+| Activation (AG03, Non-Student EM) | ~65% | ~61% | ~3.7pp |
+| Reminder (AG13, Non-Student EM) | ~46% | ~37% | **~8.9pp** |
 
-Reminder email (day 15) outperforms activation email (day 7). PVDTAG11 (Student reminder, +5.38pp) is the single strongest segment in the entire portfolio.
+The first email works within 2 weeks — then the curve slows. The reminder re-accelerates conversion for the remaining non-activators. Clients who need the nudge need it twice.
 
-95% of VVD cards are digital and auto-activate at issuance. VDT targets the remaining ~5%. As Card Type 03 (digital) grows from 47% today, the addressable market shrinks.
+DO (Digital Online) fallback has zero or negative lift (-3.1pp to -0.4pp). It's not a channel test — just a fallback for non-email-eligible clients. Email is the only channel that works.
 
-**Recommendation**: Continue short-term (strong lift). Model the Card Type 03 trajectory — when auto-activation reaches 70%+, VDT becomes obsolete.
+95% of VVD cards auto-activate at issuance. VDT targets the remaining ~5%. As digital card types grow (47% today), this market shrinks.
+
+**Recommendation**: Continue — the reminder effect is the real driver. Investigate whether a third nudge (day 21?) would further lift the non-activator tail. Model the Card Type 03 trajectory for sunset planning.
 
 ---
 

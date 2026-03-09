@@ -12,31 +12,9 @@ NO NIBT — not significant. v1 showed -18x ROI.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Zero Lift, Confirmed Twice
+### What VUT Teaches Us About Campaign Design
 
-One-time email blast (Jun 2025). Action rate 13.8% vs Control 13.8% — nearly identical.
-
-Originally 6 report groups — 5 removed during config (all student segments, all in-app channels eliminated). Only PVUTAG01 (AoM, Email) remains. The removed IM channels may have been the ones that could have worked, given VAW's in-app success.
-
-Known SAS bug: success definition references wrong alias, uses -30 day pre-treatment window counting activity before treatment start.
-
-**Recommendation**: Discontinue. The five design changes needed to make VUT effective would transform it into VAW. Redirect 785K email deployments to VAW expansion.
-
----
-
-## RIGHT — VAW (Add To Wallet)
-
-### Plot Title
-**+$70/Client Spend Lift (DiD) | 10.8K Incremental | +2.62pp Lift** — All 10 Cohorts Significant, 38 Deployments Per Incremental (Best in Portfolio)
-
-NO $78.21 NIBT — wallet provisioning is not new client acquisition. Revenue case is built on post-provisioning spend instead.
-
-### Vintage Curve
-*(placeholder — user builds the chart)*
-
-### Why VAW Wins Where VUT Fails — 5 Design Advantages
-
-VAW and VUT target the same outcome. VAW succeeds on every dimension where VUT fails:
+VUT and VAW target the exact same outcome — getting clients to add VVD to their digital wallet. VUT fails on every design dimension where VAW succeeds:
 
 | Dimension | VUT (Zero Lift) | VAW (+2.62pp) |
 |-----------|----------------|---------------|
@@ -46,8 +24,32 @@ VAW and VUT target the same outcome. VAW succeeds on every dimension where VUT f
 | Mobile gate | No filter | Must login in last 30 days |
 | Already provisioned | No exclusion | Explicitly excluded |
 
-Single-touch campaign: every client gets exactly one in-app message. No repeat targeting. All 10,816 incremental clients from one well-targeted message.
+One-time email blast (Jun 2025). Action rate 13.8% vs Control 13.8% — nearly identical. Originally 6 report groups — 5 removed during config (all student segments and all in-app channels eliminated). The removed IM channels may have been the ones that worked, given VAW's in-app success.
 
-Post-provisioning spend (Difference-in-Differences): Action group clients spend +$70 per client per 90-day window more than Control equivalent. This validates the revenue case more rigorously than the acquisition proxy.
+Known SAS bug: success definition references wrong alias, uses -30 day pre-treatment window counting activity before treatment start.
 
-**Recommendation**: Expand. Consider Android equivalent (Google Pay). This targeting model — high recency, platform-specific, in-app, engagement-gated, waste-excluded — should be the template for future campaign design.
+**Recommendation**: Discontinue VUT. Its value is as a controlled experiment that proves targeting precision matters — recency, platform, channel, and engagement filtering are the difference between zero lift and best-in-portfolio efficiency.
+
+---
+
+## RIGHT — VAW (Add To Wallet)
+
+### Plot Title
+**10.8K Incremental | +2.62pp Lift** — All 10 Cohorts Significant, 38 Deployments Per Incremental (Best in Portfolio)
+
+NO NIBT — wallet provisioning is not new client acquisition. The $78.21 model does not apply.
+
+### Vintage Curve
+*(placeholder — user builds the chart)*
+
+### Best Efficiency in Portfolio — Single Touch, Maximum Precision
+
+38 deployments per incremental client. For comparison: VCN requires 4,403 (116x more), VDA requires 541 (14x more). VAW achieves the highest incremental count (10,816) of any campaign with the fewest deployments per success.
+
+Every client gets exactly one in-app message. No repeat targeting. No reminders. The conversion happens because the targeting is precise — not because the client was worn down.
+
+All 10 cohorts significant (Apr 2025 – Feb 2026). Lift ranges from +1.16pp to +3.21pp — remarkably consistent across months.
+
+VAW targets: iOS users who activated their digital VVD card in the last 6 days, are active in mobile banking (logged in last 30 days), have never provisioned before, and are low credit card users. This funnel self-selects for high-propensity clients at the exact moment of intent.
+
+**Recommendation**: Expand VAW. Consider an Android equivalent (Google Pay). This targeting model — high recency, platform-specific, in-app channel, engagement-gated, waste-excluded — should be the template for how future campaigns are designed.
