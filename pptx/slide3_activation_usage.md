@@ -12,17 +12,20 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### Two-Stage Email Design Works as a Unit
+### Acceleration, Not Creation
 
-VDT is a two-stage email campaign: clients who don't activate after the first email (day 7) automatically receive a reminder (day 15). We measure using AG01/AG03 (EM channel) only — the 30-day window from first email captures both emails' combined effect.
+| Metric | Value |
+|--------|-------|
+| Day 30 gap | +4.65pp (Action ahead of Control) |
+| Day 90 gap | ~3pp (Control catches up) |
+| Day 90 activation | Action ~57%, Control ~54% |
+| Incremental activations | 6.1K |
+| Recent cohorts (Dec–Feb) | +3.5pp to +4.9pp (strengthening) |
+| DO fallback lift | ~0pp (email drives 100% of signal) |
 
-The combined two-stage design delivers +4.65pp lift and 6.1K incremental activations — the highest in the portfolio. Recent cohorts are strengthening (Dec–Feb: +3.5pp to +4.9pp), suggesting targeting is improving over time.
+Both groups converge at ~55% by day 90 — the campaign changes **when** clients activate, not **whether**. Two-stage email design: day 7 activation + day 15 reminder for non-activators.
 
-**EM is the only effective channel.** DO fallback (AG02/AG04) shows no measurable lift. Email drives 100% of VDT's signal.
-
-**Shrinking addressable market.** 95% of VVD cards auto-activate at issuance. VDT targets the remaining ~5%. As Card Type 03 (digital) grows from 47% today, this tail shrinks.
-
-**Recommendation**: Investigate whether a third nudge (day 21?) could further lift the remaining non-activator tail. Model Card Type 03 growth for sunset planning. Consider dropping DO fallback (zero value).
+**Recommendation**: Protect VDT. Drop DO fallback (zero lift). Investigate third nudge (day 21) to capture remaining non-activators.
 
 ---
 
