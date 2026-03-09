@@ -12,16 +12,21 @@ NO NIBT — activation is not new client acquisition.
 ### Vintage Curve
 *(placeholder — user builds the chart)*
 
-### 4 of 6 Report Groups Significant — All Email
+### Performance by Channel
 
-| Group | Channel | Lift | Sig |
-|-------|---------|------|-----|
-| AG01 Student | EM | +2.81pp | Yes |
-| AG03 Non-Student | EM | +4.80pp | Yes |
-| AG11 Student Reminder | EM | +5.38pp | Yes |
-| AG13 Non-Student Reminder | EM | +4.93pp | Yes |
-| AG02 Student | DO | -2.05pp | No |
-| AG04 Non-Student | DO | -0.12pp | No |
+| Channel | Deployments | Clients | Action Rate | Lift | Sig |
+|---------|------------|---------|-------------|------|-----|
+| EM | 703,005 | 112,914 | 61.16% | +4.75pp | Yes |
+| DO | 20,561 | 19,564 | 57.53% | +1.13pp | No |
+
+### Performance by Segment
+
+| Segment | Channel | Action Rate | Control Rate | Lift |
+|---------|---------|-------------|-------------|------|
+| Student | EM | 72.92% | 70.10% | +2.81pp |
+| Student | DO | 58.79% | 60.84% | -2.05pp |
+| Non-Student | EM | 66.82% | 62.02% | +4.80pp |
+| Non-Student | DO | 57.33% | 57.45% | -0.12pp |
 
 Email open rate: 65-80%. Click rate: 1-7%. Clients open the email, don't click — then go activate on their own. The nudge works even without a click-through.
 
