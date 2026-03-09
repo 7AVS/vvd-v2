@@ -18,11 +18,11 @@ VUT and VAW target the exact same outcome — getting clients to add VVD to thei
 
 | Dimension | VUT (Zero Lift) | VAW (+2.62pp) |
 |-----------|----------------|---------------|
-| Recency | 30-day window | 6-day window |
 | Platform | All platforms | iOS only (Apple Pay 1-tap) |
 | Channel | Email | In-app message |
 | Mobile gate | No filter | Must login in last 30 days |
 | Already provisioned | No exclusion | Explicitly excluded |
+| Refresh | One-time batch | Monthly re-targeting with fresh cohorts |
 
 One-time email blast (Jun 2025). Action rate 13.8% vs Control 13.8% — nearly identical. Originally 6 report groups — 5 removed during config (all student segments and all in-app channels eliminated). The removed IM channels may have been the ones that worked, given VAW's in-app success.
 
@@ -50,6 +50,6 @@ Every client gets exactly one in-app message. No repeat targeting. No reminders.
 
 All 10 cohorts significant (Apr 2025 – Feb 2026). Lift ranges from +1.16pp to +3.21pp — remarkably consistent across months.
 
-VAW targets: iOS users who activated their digital VVD card in the last 6 days, are active in mobile banking (logged in last 30 days), have never provisioned before, and are low credit card users. This funnel self-selects for high-propensity clients at the exact moment of intent.
+VAW targets: iOS users who made at least 1 VVD purchase in the last 60 days, activated their digital card in mobile, are active in mobile banking (logged in last 30 days), have never provisioned before, and are low credit card users. Monthly refresh means each cohort captures clients at their moment of highest engagement.
 
 **Recommendation**: Expand VAW. Consider an Android equivalent (Google Pay). This targeting model — high recency, platform-specific, in-app channel, engagement-gated, waste-excluded — should be the template for how future campaigns are designed.
