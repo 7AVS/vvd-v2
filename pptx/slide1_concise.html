@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VVD Campaign Measurement — Experiment Design (Concise)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    background: #f5f5f5;
+    color: #1a1a1a;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .header {
+    background: #003168;
+    color: #fff;
+    padding: 24px 40px 20px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .header .subtitle {
+    font-size: 13px;
+    color: #b0c4de;
+    margin-top: 4px;
+    font-weight: 400;
+  }
+  .header .note {
+    font-size: 11px;
+    color: #8aa8c8;
+    margin-top: 2px;
+    font-style: italic;
+  }
+
+  .content {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 20px 40px 10px;
+  }
+
+  .stage-group {
+    margin-bottom: 16px;
+  }
+  .stage-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.3px;
+    margin-bottom: 7px;
+    padding-left: 2px;
+  }
+  .stage-label.acquisition { color: #0051A5; }
+  .stage-label.activation  { color: #00857C; }
+  .stage-label.usage       { color: #F5A623; }
+  .stage-label.wallet      { color: #7B61FF; }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 10px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 6px;
+    padding: 14px 18px 12px;
+    border-left: 4px solid #ccc;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .card.acquisition { border-left-color: #0051A5; }
+  .card.activation  { border-left-color: #00857C; }
+  .card.usage       { border-left-color: #F5A623; }
+  .card.wallet      { border-left-color: #7B61FF; }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .campaign-name {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #003168;
+  }
+  .campaign-name .mne {
+    font-weight: 400;
+    color: #666;
+    font-size: 12px;
+  }
+  .badge {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 9px;
+    white-space: nowrap;
+  }
+  .badge.trigger  { background: #e8f4f8; color: #0a6c7a; }
+  .badge.batch    { background: #fff3e0; color: #8a6200; }
+  .badge.monthly  { background: #f0e6ff; color: #5a3d8a; }
+  .badge.seasonal { background: #fce4ec; color: #8a3040; }
+
+  .description {
+    font-size: 12px;
+    color: #444;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+
+  .metrics-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    font-size: 11.5px;
+    color: #444;
+    margin-bottom: 6px;
+    padding: 6px 10px;
+    background: #f8f9fb;
+    border-radius: 4px;
+  }
+  .metrics-row .sep { color: #ccc; }
+  .metrics-row strong { color: #003168; font-weight: 700; }
+  .metrics-row .ch {
+    font-weight: 600;
+    color: #003168;
+    background: #f0f4f8;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+
+  .callout {
+    background: #fffde7;
+    border-left: 3px solid #f5a623;
+    border-radius: 0 4px 4px 0;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: #6d5a00;
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+  .callout.info {
+    background: #e8f0fe;
+    border-left-color: #0051A5;
+    color: #1a3a6a;
+  }
+
+  .footer {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 6px 40px 28px;
+  }
+  .footer-bar {
+    background: #fff;
+    border-radius: 6px;
+    padding: 12px 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-top: 3px solid #003168;
+  }
+  .footer-bar ol {
+    list-style: none;
+    counter-reset: fn;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 28px;
+  }
+  .footer-bar li {
+    counter-increment: fn;
+    font-size: 11px;
+    color: #555;
+    line-height: 1.45;
+  }
+  .footer-bar li::before {
+    content: counter(fn) ".";
+    font-weight: 700;
+    color: #003168;
+    margin-right: 4px;
+  }
+
+  @media (max-width: 600px) {
+    .content, .footer { padding-left: 16px; padding-right: 16px; }
+    .header { padding: 16px; }
+    .cards { grid-template-columns: 1fr; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .content, .footer { padding-left: 20px; padding-right: 20px; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+    .footer-bar { box-shadow: none; border: 1px solid #ddd; }
+    .stage-group { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VVD Campaign Measurement &mdash; Experiment Design</h1>
+  <div class="subtitle">6 independent A/B tests | Jan 2025 &ndash; Feb 2026</div>
+  <div class="note">Action = communicated to. Control = organic. No orchestration between campaigns.</div>
+</div>
+
+<div class="content">
+
+  <!-- ACQUISITION -->
+  <div class="stage-group">
+    <div class="stage-label acquisition">Acquisition</div>
+    <div class="cards">
+
+      <div class="card acquisition">
+        <div class="card-header">
+          <span class="campaign-name">Contextual Notification <span class="mne">VCN</span></span>
+          <span class="badge trigger">Monthly Trigger</span>
+        </div>
+        <div class="description">
+          Monthly screening of non-VVD-holders via decision tree. Mobile push notification encouraging card acquisition. Targets high-debit, low-credit-card clients active in mobile banking. Includes students 14+.
+        </div>
+        <div class="metrics-row">
+          <span class="ch">MB (Mobile Push)</span>
+          <span class="sep">|</span>
+          Split <strong>95/5</strong>
+          <span class="sep">|</span>
+          Window <strong>30d</strong>
+          <span class="sep">|</span>
+          <strong>12</strong> cohorts &middot; ~1.1M per cohort
+          <span class="sep">|</span>
+          Total: <strong>~2.0M</strong> action
+        </div>
+        <div class="callout">Flag: Persistent SRM (94.7/5.3 vs designed 95/5)</div>
+      </div>
+
+      <div class="card acquisition">
+        <div class="card-header">
+          <span class="campaign-name">Seasonal Acquisition <span class="mne">VDA</span></span>
+          <span class="badge seasonal">Seasonal Batch</span>
+        </div>
+        <div class="description">
+          Seasonal campaign (~2x/year) targeting non-VVD-holders active in online banking. Two-arm channel test: Email+Banner (250K cap) vs Banner only (no cap). Tenure-based email prioritization (&le;8 years).
+        </div>
+        <div class="metrics-row">
+          <span class="ch">EM+IM vs IM only</span>
+          <span class="sep">|</span>
+          Split <strong>95/5</strong>
+          <span class="sep">|</span>
+          Window <strong>90d</strong>
+          <span class="sep">|</span>
+          <strong>2</strong> cohorts (Jul, Nov 2025) &middot; ~755K per wave
+          <span class="sep">|</span>
+          Total: <strong>~895K</strong> action
+        </div>
+        <div class="callout">Flag: SRM observed (92/8 vs designed 95/5)</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ACTIVATION -->
+  <div class="stage-group">
+    <div class="stage-label activation">Activation</div>
+    <div class="cards">
+
+      <div class="card activation">
+        <div class="card-header">
+          <span class="campaign-name">Activation Trigger <span class="mne">VDT</span></span>
+          <span class="badge trigger">Activity Trigger</span>
+        </div>
+        <div class="description">
+          Triggered 7 days post-card-issuance + day 15 reminder. Targets the ~5% of VVD cards that don&rsquo;t auto-activate. Student and non-student segments. DO channel is fallback for non-email-eligible, not a deliberate test.
+        </div>
+        <div class="metrics-row">
+          <span class="ch">EM (Email) primary, DO fallback</span>
+          <span class="sep">|</span>
+          Split <strong>90/10</strong>
+          <span class="sep">|</span>
+          Window <strong>30d</strong>
+          <span class="sep">|</span>
+          <strong>14</strong> cohorts &middot; ~51K per cohort
+          <span class="sep">|</span>
+          Total: <strong>~130K</strong> action
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- USAGE -->
+  <div class="stage-group">
+    <div class="stage-label usage">Usage</div>
+    <div class="cards">
+
+      <div class="card usage">
+        <div class="card-header">
+          <span class="campaign-name">Usage Trigger <span class="mne">VUI</span></span>
+          <span class="badge trigger">Activity Trigger</span>
+        </div>
+        <div class="description">
+          Triggered for cardholders who activated in last 60 days but haven&rsquo;t transacted. Restrictive funnel: must be low-CC, high-debit, foreign currency user, active mobile. Oct 2025 deep dive recommended expanding population and increasing control &mdash; status unknown.
+        </div>
+        <div class="metrics-row">
+          <span class="ch">EM+IM / EM / IM (by eligibility)</span>
+          <span class="sep">|</span>
+          Split <strong>95/5</strong>
+          <span class="sep">|</span>
+          Window <strong>30d</strong>
+          <span class="sep">|</span>
+          <strong>13</strong> cohorts &middot; ~28K per cohort
+          <span class="sep">|</span>
+          Total: <strong>~149K</strong> action
+        </div>
+        <div class="callout info">Note: Very small control (~600 per cohort)</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- WALLET PROVISIONING -->
+  <div class="stage-group">
+    <div class="stage-label wallet">Wallet Provisioning</div>
+    <div class="cards">
+
+      <div class="card wallet">
+        <div class="card-header">
+          <span class="campaign-name">Tokenization <span class="mne">VUT</span></span>
+          <span class="badge batch">One-time Batch</span>
+        </div>
+        <div class="description">
+          Single email blast to existing VVD users to add card to digital wallet. Originally 6 segments &mdash; 5 removed (all student + all in-app eliminated). 90-day VUI exclusion resting rule.
+        </div>
+        <div class="metrics-row">
+          <span class="ch">EM (Email) only</span>
+          <span class="sep">|</span>
+          Split <strong>95/5</strong>
+          <span class="sep">|</span>
+          Window <strong>90d</strong>
+          <span class="sep">|</span>
+          <strong>1</strong> cohort (Jun 2025)
+          <span class="sep">|</span>
+          <strong>785K</strong> action
+        </div>
+        <div class="callout info">Note: Known SAS bug in success definition</div>
+      </div>
+
+      <div class="card wallet">
+        <div class="card-header">
+          <span class="campaign-name">Add To Wallet <span class="mne">VAW</span></span>
+          <span class="badge monthly">Monthly</span>
+        </div>
+        <div class="description">
+          Monthly in-app message to iOS users to add VVD to Apple Pay. Targets active VVD users (purchase in 60 days), mobile-engaged, never provisioned. Same goal as VUT but fundamentally different design.
+        </div>
+        <div class="metrics-row">
+          <span class="ch">IM (In-app, iOS only)</span>
+          <span class="sep">|</span>
+          Split <strong>80/20</strong>
+          <span class="sep">|</span>
+          Window <strong>30d</strong>
+          <span class="sep">|</span>
+          <strong>10</strong> cohorts &middot; ~40K per cohort
+          <span class="sep">|</span>
+          Total: <strong>~402K</strong> action
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <div class="footer-bar">
+    <ol>
+      <li>Static control groups (VCN, VDT) use client SRF for persistent holdout.</li>
+      <li>VUI &rarr; VUT: 90-day resting rule is the only cross-campaign dependency.</li>
+    </ol>
+  </div>
+</div>
+
+</body>
+</html>
