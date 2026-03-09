@@ -48,7 +48,7 @@ NO NIBT — wallet provisioning is not new client acquisition. The $78.21 model 
 
 Every client gets exactly one in-app message. No repeat targeting. No reminders. The conversion happens because the targeting is precise — not because the client was worn down.
 
-All 10 cohorts significant (Apr 2025 – Feb 2026). Lift ranges from +1.16pp to +3.21pp — remarkably consistent across months.
+All 10 cohorts significant (Apr 2025 – Feb 2026). Lift ranges from +0.70pp to +3.09pp — consistent across months.
 
 VAW targets: iOS users who made at least 1 VVD purchase in the last 60 days, activated their digital card in mobile, are active in mobile banking (logged in last 30 days), have never provisioned before, and are low credit card users. Monthly refresh means each cohort captures clients at their moment of highest engagement.
 

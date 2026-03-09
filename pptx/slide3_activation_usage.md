@@ -49,11 +49,11 @@ VUI's control group is ~600 clients per cohort. With that sample size, a cohort 
 
 Baseline usage is 33% — one in three clients transact organically without any messaging. The campaign is trying to move a metric that already happens at high rates.
 
-Increasing control from 5% to 15% would give ~4,200 control clients per cohort, bringing the detectable threshold down to ~1.5pp — well within the range of observed lifts.
+Increasing control from 5% to 15% would bring the detectable threshold down to ~0.78pp (per Oct 2025 analysis) — well within the range of observed lifts.
 
 October 2025 deep dive recommended three changes:
 1. **Expand target population** — 81% of eligible clients are excluded because their activation was >61 days ago
-2. **Increase control from 5% to 15%** — brings detectable threshold from ~3.9pp to ~1.5pp per cohort
+2. **Increase control from 5% to 15%** — brings detectable threshold from ~3.9pp to ~0.78pp
 3. **Relax 365-day resting rule to 30 days** — allows more re-engagement
 
 Implementation status of all three: **Unknown**.
