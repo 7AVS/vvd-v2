@@ -701,9 +701,9 @@ else:
         spend_overall
         .groupBy("MNE", "TST_GRP_CD")
         .pivot("PERIOD", ["PRE", "POST"])
-        .agg(F.first("avg_spend").alias("avg_spend"))
+        .agg(F.first("avg_spend").alias("spend"))
         .withColumn("spend_change",
-                    F.coalesce(F.col("POST_avg_spend"), F.lit(0)) - F.coalesce(F.col("PRE_avg_spend"), F.lit(0)))
+                    F.coalesce(F.col("POST_spend"), F.lit(0)) - F.coalesce(F.col("PRE_spend"), F.lit(0)))
     )
 
     did_collected = did_pivot.collect()
@@ -719,10 +719,10 @@ else:
             did_val = a_change - c_change
             did_rows.append({
                 "MNE": mne,
-                "ACTION_PRE_SPEND": round(float(action[0].PRE_avg_spend or 0), 2),
-                "ACTION_POST_SPEND": round(float(action[0].POST_avg_spend or 0), 2),
-                "CONTROL_PRE_SPEND": round(float(control[0].PRE_avg_spend or 0), 2),
-                "CONTROL_POST_SPEND": round(float(control[0].POST_avg_spend or 0), 2),
+                "ACTION_PRE_SPEND": round(float(action[0].PRE_spend or 0), 2),
+                "ACTION_POST_SPEND": round(float(action[0].POST_spend or 0), 2),
+                "CONTROL_PRE_SPEND": round(float(control[0].PRE_spend or 0), 2),
+                "CONTROL_POST_SPEND": round(float(control[0].POST_spend or 0), 2),
                 "DID_SPEND_DELTA": round(did_val, 2),
             })
             print(f"  {mne} DiD: ${did_val:,.2f}/client")
