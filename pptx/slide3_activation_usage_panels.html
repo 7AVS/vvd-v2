@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VVD Slide 3 &mdash; VDT &amp; VUI Insight Panels</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    background: #e8e8e8;
+    color: #1a1a1a;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px;
+  }
+
+  .slide-bottom {
+    max-width: 1200px;
+    width: 100%;
+    background: #f5f5f5;
+    border-radius: 6px;
+    padding: 18px 24px 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+
+  .two-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+
+  .panel {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px 18px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    border-top: 4px solid #ccc;
+    max-height: 420px;
+    overflow: hidden;
+  }
+  .panel.green-top { border-top-color: #2D8C3C; }
+  .panel.amber-top { border-top-color: #D4820C; }
+
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #003168;
+    margin-bottom: 2px;
+  }
+  .panel-title .mne {
+    font-weight: 400;
+    color: #666;
+    font-size: 11px;
+  }
+  .panel-headline {
+    font-size: 11px;
+    color: #006847;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .panel-headline.amber { color: #8a6200; }
+
+  /* ── Channel bar chart ── */
+  .bar-section { margin-bottom: 10px; }
+  .bar-group-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #003168;
+    margin-bottom: 3px;
+    padding-left: 2px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 3px;
+    height: 18px;
+  }
+  .bar-label {
+    font-size: 9.5px;
+    color: #444;
+    width: 130px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .bar-track {
+    flex: 1;
+    height: 14px;
+    background: #f0f2f5;
+    border-radius: 3px;
+    position: relative;
+    overflow: visible;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    position: absolute;
+    top: 0;
+    transition: width 0.3s;
+  }
+  .bar-fill.positive {
+    left: 50%;
+    background: #2D8C3C;
+  }
+  .bar-fill.positive.light {
+    background: #6DBB7A;
+  }
+  .bar-fill.negative {
+    right: 50%;
+    background: #C41230;
+  }
+  .bar-center-line {
+    position: absolute;
+    left: 50%;
+    top: -1px;
+    bottom: -1px;
+    width: 1px;
+    background: #999;
+    z-index: 2;
+  }
+  .bar-value {
+    font-size: 9px;
+    font-weight: 600;
+    position: absolute;
+    top: 1px;
+    white-space: nowrap;
+  }
+  .bar-value.pos { color: #1a6b2a; }
+  .bar-value.neg { color: #C41230; }
+  .bar-star {
+    font-size: 8px;
+    color: #D4820C;
+    font-weight: 700;
+    margin-left: 2px;
+  }
+
+  .bar-note {
+    font-size: 9.5px;
+    color: #555;
+    font-style: italic;
+    margin-top: 5px;
+    padding-left: 2px;
+    line-height: 1.35;
+  }
+
+  .bar-divider {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 5px 0;
+  }
+
+  /* ── Donut ── */
+  .donut-section {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 10px 0;
+    padding: 8px 10px;
+    background: #f8f9fb;
+    border-radius: 6px;
+  }
+  .donut {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    /* 95% gray, 5% navy — conic gradient */
+    background: conic-gradient(#003168 0deg 18deg, #ddd 18deg 360deg);
+    position: relative;
+  }
+  .donut-hole {
+    position: absolute;
+    top: 12px; left: 12px;
+    width: 36px; height: 36px;
+    background: #f8f9fb;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #003168;
+  }
+  .donut-legend {
+    font-size: 10px;
+    color: #444;
+    line-height: 1.5;
+  }
+  .donut-legend .pct {
+    font-weight: 700;
+    color: #003168;
+  }
+  .donut-legend .gray-pct {
+    font-weight: 600;
+    color: #999;
+  }
+  .donut-caption {
+    font-size: 9.5px;
+    color: #666;
+    margin-top: 2px;
+    font-style: italic;
+  }
+
+  /* ── Rec box ── */
+  .rec-box {
+    margin-top: 10px;
+    background: #e8f0fe;
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 10.5px;
+    color: #1a3a6a;
+    line-height: 1.4;
+    border-left: 3px solid #0051A5;
+  }
+  .rec-box strong { color: #003168; }
+  .rec-box.amber-rec {
+    background: #fef6e8;
+    border-left-color: #D4820C;
+    color: #5a4200;
+  }
+  .rec-box.amber-rec strong { color: #8a5a00; }
+
+  /* ── Power viz ── */
+  .power-section {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .sample-box {
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .sample-box.action {
+    background: #e8f0fe;
+    border: 1px solid #b3cde8;
+    flex: 3;
+  }
+  .sample-box.control {
+    background: #fef6e8;
+    border: 1px solid #e8d4a8;
+    flex: 0.3;
+    min-width: 60px;
+  }
+  .sample-box .sb-label {
+    font-size: 8.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #666;
+    margin-bottom: 2px;
+  }
+  .sample-box .sb-value {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .sample-box.action .sb-value { color: #0051A5; }
+  .sample-box.control .sb-value { color: #D4820C; }
+  .sample-box .sb-sub {
+    font-size: 8.5px;
+    color: #888;
+  }
+
+  .vs-divider {
+    display: flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #999;
+  }
+
+  .mde-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: #f8f9fb;
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  .mde-line .mde-label {
+    font-size: 9.5px;
+    color: #666;
+  }
+  .mde-line .mde-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: #D4820C;
+  }
+  .mde-dash {
+    flex: 1;
+    border-top: 2px dashed #D4820C;
+  }
+
+  /* ── Rec cards ── */
+  .rec-cards { margin-bottom: 8px; }
+  .rec-card {
+    background: #fef9f0;
+    border: 1px solid #f0e0c0;
+    border-radius: 5px;
+    padding: 6px 10px;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .rc-num {
+    font-size: 12px;
+    font-weight: 700;
+    color: #D4820C;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+  }
+  .rc-text {
+    font-size: 10px;
+    color: #444;
+    line-height: 1.4;
+  }
+  .rc-text strong { color: #333; }
+  .rc-status {
+    margin-left: auto;
+    font-size: 8.5px;
+    font-weight: 600;
+    color: #D4820C;
+    background: #fff3e0;
+    padding: 1px 6px;
+    border-radius: 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .bug-note {
+    font-size: 9.5px;
+    color: #C41230;
+    padding: 4px 10px;
+    background: #fef0f0;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    line-height: 1.35;
+  }
+  .bug-note strong { color: #a00; }
+
+  @media (max-width: 900px) {
+    .two-panel { grid-template-columns: 1fr; }
+    .slide-bottom { padding: 12px; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .slide-bottom { box-shadow: none; }
+    .panel { box-shadow: none; border: 1px solid #ddd; }
+  }
+</style>
+</head>
+<body>
+
+<div class="slide-bottom">
+  <div class="two-panel">
+
+    <!-- LEFT PANEL: VDT -->
+    <div class="panel green-top">
+      <div class="panel-title">Activation Trigger <span class="mne">VDT</span></div>
+      <div class="panel-headline">Email Works, DO Fails &mdash; But the Market is Shrinking</div>
+
+      <!-- Channel lift bars -->
+      <div class="bar-section">
+        <div class="bar-group-label">Email channels</div>
+
+        <div class="bar-row">
+          <div class="bar-label">Student Reminder (AG11)</div>
+          <div class="bar-track">
+            <div class="bar-center-line"></div>
+            <div class="bar-fill positive" style="width: 22%;"><span class="bar-value pos" style="left: calc(100% + 4px);">+5.38pp <span class="bar-star">&#9733;</span></span></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Reminder (AG13)</div>
+          <div class="bar-track">
+            <div class="bar-center-line"></div>
+            <div class="bar-fill positive" style="width: 20%;"><span class="bar-value pos" style="left: calc(100% + 4px);">+4.87pp</span></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Activation (AG03)</div>
+          <div class="bar-track">
+            <div class="bar-center-line"></div>
+            <div class="bar-fill positive" style="width: 19%;"><span class="bar-value pos" style="left: calc(100% + 4px);">+4.70pp</span></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Student (AG01)</div>
+          <div class="bar-track">
+            <div class="bar-center-line"></div>
+            <div class="bar-fill positive light" style="width: 12%;"><span class="bar-value pos" style="left: calc(100% + 4px);">+3.03pp</span></div>
+          </div>
+        </div>
+
+        <hr class="bar-divider">
+        <div class="bar-group-label" style="color: #C41230;">DO Fallback</div>
+
+        <div class="bar-row">
+          <div class="bar-label">DO Non-Student (AG04)</div>
+          <div class="bar-track">
+            <div class="bar-center-line"></div>
+            <div class="bar-fill negative" style="width: 2%; right: 50%;"><span class="bar-value neg" style="right: calc(100% + 4px);">&minus;0.41pp</span></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">DO Student (AG02)</div>
+          <div class="bar-track">
+            <div class="bar-center-line"></div>
+            <div class="bar-fill negative" style="width: 12%; right: 50%;"><span class="bar-value neg" style="right: calc(100% + 4px);">&minus;3.06pp</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bar-note">Day-15 reminder outperforms day-7 activation email &mdash; clients need the second nudge.</div>
+
+      <!-- Donut: shrinking TAM -->
+      <div class="donut-section">
+        <div class="donut">
+          <div class="donut-hole">5%</div>
+        </div>
+        <div>
+          <div class="donut-legend">
+            <span class="pct">5%</span> manual activation (VDT target)<br>
+            <span class="gray-pct">95%</span> auto-activate at issuance
+          </div>
+          <div class="donut-caption">As digital cards grow, VDT's addressable market shrinks.</div>
+        </div>
+      </div>
+
+      <div class="rec-box">
+        <strong>Rec:</strong> Continue short-term (strong lift). Model Card Type 03 trajectory &mdash; when auto-activation reaches 70%+, VDT becomes obsolete.
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: VUI -->
+    <div class="panel amber-top">
+      <div class="panel-title">Usage Trigger <span class="mne">VUI</span></div>
+      <div class="panel-headline amber">Underpowered by Design, Not Necessarily Failed</div>
+
+      <!-- Power problem viz -->
+      <div class="power-section">
+        <div class="sample-box action">
+          <div class="sb-label">Action</div>
+          <div class="sb-value">~28,000</div>
+          <div class="sb-sub">per cohort</div>
+        </div>
+        <div class="vs-divider">vs</div>
+        <div class="sample-box control">
+          <div class="sb-label">Control</div>
+          <div class="sb-value">~600</div>
+          <div class="sb-sub">per cohort</div>
+        </div>
+      </div>
+
+      <div class="mde-line">
+        <div class="mde-label">Min detectable lift</div>
+        <div class="mde-dash"></div>
+        <div class="mde-value">1.29pp</div>
+      </div>
+
+      <!-- Recommendation cards -->
+      <div class="rec-cards">
+        <div class="rec-card">
+          <div class="rc-num">1</div>
+          <div class="rc-text"><strong>Expand target population</strong> &mdash; 81% excluded (&gt;61 days since activation)</div>
+          <div class="rc-status">UNKNOWN</div>
+        </div>
+        <div class="rec-card">
+          <div class="rc-num">2</div>
+          <div class="rc-text"><strong>Increase control 5% &rarr; 15%</strong> &mdash; reduces MDE from 1.29 to 0.78pp</div>
+          <div class="rc-status">UNKNOWN</div>
+        </div>
+        <div class="rec-card">
+          <div class="rc-num">3</div>
+          <div class="rc-text"><strong>Relax resting rule 365d &rarr; 30d</strong> &mdash; allow re-entry</div>
+          <div class="rc-status">UNKNOWN</div>
+        </div>
+      </div>
+
+      <div class="bug-note">
+        <strong>233K same-day email duplicates detected</strong> &mdash; system bug, not strategy.
+      </div>
+
+      <div class="rec-box amber-rec">
+        <strong>Rec:</strong> Cannot conclude campaign doesn't work. Implement Oct 2025 recs, re-measure one quarter.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VVD Slide 4 &mdash; VUT &amp; VAW Insight Panels</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    background: #e8e8e8;
+    color: #1a1a1a;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px;
+  }
+
+  .slide-bottom {
+    max-width: 1200px;
+    width: 100%;
+    background: #f5f5f5;
+    border-radius: 6px;
+    padding: 18px 24px 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+
+  .two-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+
+  .panel {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px 18px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    border-top: 4px solid #ccc;
+    max-height: 440px;
+    overflow: hidden;
+  }
+  .panel.red-top { border-top-color: #C41230; }
+  .panel.green-top { border-top-color: #2D8C3C; }
+
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #003168;
+    margin-bottom: 2px;
+  }
+  .panel-title .mne {
+    font-weight: 400;
+    color: #666;
+    font-size: 11px;
+  }
+  .panel-headline {
+    font-size: 11px;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .panel-headline.red { color: #C41230; }
+  .panel-headline.green { color: #006847; }
+
+  /* ── Rate comparison ── */
+  .rate-compare {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px 0;
+    margin-bottom: 8px;
+  }
+  .rate-block {
+    text-align: center;
+  }
+  .rate-block .rb-label {
+    font-size: 8.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #888;
+    margin-bottom: 1px;
+  }
+  .rate-block .rb-value {
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .rate-block .rb-value.navy { color: #003168; }
+  .rate-block .rb-value.gray { color: #aaa; }
+  .rate-equals {
+    font-size: 18px;
+    font-weight: 300;
+    color: #bbb;
+  }
+  .rate-diff {
+    text-align: center;
+    padding: 3px 10px;
+    background: #f0f0f0;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #888;
+  }
+
+  /* ── Timeline ── */
+  .timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 8px 0;
+    padding: 6px 10px;
+    background: #f8f9fb;
+    border-radius: 6px;
+  }
+  .tl-node {
+    text-align: center;
+    flex: 0 0 auto;
+  }
+  .tl-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin: 0 auto 3px;
+  }
+  .tl-dot.red { background: #C41230; }
+  .tl-dot.green { background: #2D8C3C; }
+  .tl-label {
+    font-size: 9px;
+    color: #666;
+    font-weight: 600;
+  }
+  .tl-detail {
+    font-size: 8.5px;
+    color: #999;
+  }
+  .tl-line {
+    flex: 1;
+    height: 2px;
+    background: #ddd;
+    margin: 0 6px;
+    margin-bottom: 14px;
+  }
+  .tl-caption {
+    font-size: 9.5px;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    margin-top: 4px;
+  }
+
+  /* ── Text notes ── */
+  .text-note {
+    font-size: 9.5px;
+    color: #555;
+    padding: 4px 0;
+    line-height: 1.35;
+  }
+  .text-note.bug {
+    color: #C41230;
+    background: #fef0f0;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin: 4px 0;
+  }
+  .text-note.bug strong { color: #a00; }
+  .text-note.config {
+    color: #666;
+    background: #f8f8f8;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin: 4px 0;
+    font-style: italic;
+  }
+
+  /* ── Rec box ── */
+  .rec-box {
+    margin-top: 8px;
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 10.5px;
+    line-height: 1.4;
+    border-left: 3px solid;
+  }
+  .rec-box.red-rec {
+    background: #fef0f0;
+    border-left-color: #C41230;
+    color: #5a1020;
+  }
+  .rec-box.red-rec strong { color: #C41230; }
+  .rec-box.green-rec {
+    background: #e8f5ea;
+    border-left-color: #2D8C3C;
+    color: #1a4a22;
+  }
+  .rec-box.green-rec strong { color: #1a6b2a; }
+
+  /* ── Comparison table ── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 10px;
+  }
+  .compare-table th {
+    padding: 5px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    border-bottom: 2px solid #e0e4e8;
+  }
+  .compare-table th.dim { text-align: left; color: #003168; background: #f0f4f8; }
+  .compare-table th.vut { text-align: center; color: #C41230; background: #fef0f0; }
+  .compare-table th.vaw { text-align: center; color: #2D8C3C; background: #e8f5ea; }
+  .compare-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .compare-table td.dim-cell {
+    font-weight: 600;
+    color: #333;
+    font-size: 9.5px;
+  }
+  .compare-table td.vut-cell {
+    text-align: center;
+    color: #C41230;
+    background: #fff8f8;
+  }
+  .compare-table td.vaw-cell {
+    text-align: center;
+    color: #1a6b2a;
+    background: #f6fdf7;
+  }
+  .compare-table .x-mark { font-weight: 700; }
+  .compare-table .check-mark { font-weight: 700; }
+
+  /* ── Big metric ── */
+  .big-metric {
+    text-align: center;
+    padding: 8px 0 4px;
+  }
+  .big-metric .bm-number {
+    font-size: 36px;
+    font-weight: 800;
+    color: #2D8C3C;
+    line-height: 1;
+  }
+  .big-metric .bm-unit {
+    font-size: 10px;
+    color: #444;
+    margin-top: 1px;
+  }
+  .big-metric .bm-compare {
+    font-size: 9px;
+    color: #888;
+    margin-top: 2px;
+  }
+
+  /* ── Revenue callout ── */
+  .revenue-box {
+    border: 2px dashed #2D8C3C;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    text-align: center;
+  }
+  .revenue-box .rv-number {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2D8C3C;
+  }
+  .revenue-box .rv-label {
+    font-size: 10px;
+    color: #444;
+  }
+  .revenue-box .rv-note {
+    font-size: 8.5px;
+    color: #888;
+    font-style: italic;
+    margin-top: 2px;
+  }
+
+  @media (max-width: 900px) {
+    .two-panel { grid-template-columns: 1fr; }
+    .slide-bottom { padding: 12px; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .slide-bottom { box-shadow: none; }
+    .panel { box-shadow: none; border: 1px solid #ddd; }
+  }
+</style>
+</head>
+<body>
+
+<div class="slide-bottom">
+  <div class="two-panel">
+
+    <!-- LEFT PANEL: VUT -->
+    <div class="panel red-top">
+      <div class="panel-title">Tokenization Usage <span class="mne">VUT</span></div>
+      <div class="panel-headline red">Zero Lift, Confirmed Twice</div>
+
+      <!-- Rate comparison -->
+      <div class="rate-compare">
+        <div class="rate-block">
+          <div class="rb-label">Action</div>
+          <div class="rb-value navy">13.8%</div>
+        </div>
+        <div class="rate-equals">=</div>
+        <div class="rate-block">
+          <div class="rb-label">Control</div>
+          <div class="rb-value gray">13.8%</div>
+        </div>
+      </div>
+      <div style="text-align: center; margin-bottom: 8px;">
+        <span class="rate-diff">+0.02pp difference &nbsp;&bull;&nbsp; p = 0.91</span>
+      </div>
+
+      <!-- Timeline -->
+      <div class="timeline">
+        <div class="tl-node">
+          <div class="tl-dot red"></div>
+          <div class="tl-label">v1 (2025)</div>
+          <div class="tl-detail">&minus;18x ROI</div>
+        </div>
+        <div class="tl-line"></div>
+        <div class="tl-node">
+          <div class="tl-dot red"></div>
+          <div class="tl-label">v2 (2026)</div>
+          <div class="tl-detail">+0.02pp, n.s.</div>
+        </div>
+      </div>
+      <div class="tl-caption">Zero lift confirmed across both measurement cycles</div>
+
+      <div class="text-note config">
+        5 of 6 report groups removed during config. The eliminated in-app channels may have been the ones that worked.
+      </div>
+
+      <div class="text-note bug">
+        <strong>Known SAS bug:</strong> success definition references wrong alias + pre-treatment window.
+      </div>
+
+      <div class="rec-box red-rec">
+        <strong>DISCONTINUE.</strong> Redirect 785K email deployments to VAW expansion.
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: VAW -->
+    <div class="panel green-top">
+      <div class="panel-title">Add To Wallet <span class="mne">VAW</span></div>
+      <div class="panel-headline green">Why VAW Wins &mdash; 5 Design Advantages</div>
+
+      <!-- Comparison table -->
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th class="dim">Dimension</th>
+            <th class="vut">VUT &#10007;</th>
+            <th class="vaw">VAW &#10003;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="dim-cell">Recency</td>
+            <td class="vut-cell"><span class="x-mark">30 days</span></td>
+            <td class="vaw-cell"><span class="check-mark">6 days</span></td>
+          </tr>
+          <tr>
+            <td class="dim-cell">Platform</td>
+            <td class="vut-cell"><span class="x-mark">All</span></td>
+            <td class="vaw-cell"><span class="check-mark">iOS (1-tap)</span></td>
+          </tr>
+          <tr>
+            <td class="dim-cell">Channel</td>
+            <td class="vut-cell"><span class="x-mark">Email</span></td>
+            <td class="vaw-cell"><span class="check-mark">In-app</span></td>
+          </tr>
+          <tr>
+            <td class="dim-cell">Mobile gate</td>
+            <td class="vut-cell"><span class="x-mark">None</span></td>
+            <td class="vaw-cell"><span class="check-mark">Login &lt;30d</span></td>
+          </tr>
+          <tr>
+            <td class="dim-cell">Provisioned</td>
+            <td class="vut-cell"><span class="x-mark">No exclusion</span></td>
+            <td class="vaw-cell"><span class="check-mark">Excluded</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Efficiency metric -->
+      <div class="big-metric">
+        <div class="bm-number">38</div>
+        <div class="bm-unit">deployments per incremental client</div>
+        <div class="bm-compare">vs VCN: 4,403 &nbsp;&bull;&nbsp; vs VDA: 541</div>
+      </div>
+
+      <!-- Revenue callout -->
+      <div class="revenue-box">
+        <div class="rv-number">+$70/client/quarter</div>
+        <div class="rv-label">Post-provisioning spend lift (Difference-in-Differences)</div>
+        <div class="rv-note">Not $78.21 NIBT &mdash; wallet provisioning measured by spend lift, not acquisition proxy</div>
+      </div>
+
+      <div class="rec-box green-rec">
+        <strong>EXPAND.</strong> Consider Android (Google Pay). This targeting model should be the template for future campaigns.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

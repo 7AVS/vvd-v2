@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cp:*)",
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)",
+      "Bash(sed:*)",
+      "Bash(claude --version 2>&1)",
+      "Bash(npm update -g @anthropic-ai/claude-code 2>&1)"
+    ],
+    "deny": []
+  }
+}
