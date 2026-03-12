@@ -69,18 +69,24 @@ def download_csv(df, filename):
                  f'text-decoration:none;border-radius:4px">Download {filename}</a> '
                  f'({size_mb:.2f} MB)'))
 
-# Load result_df from HDFS
-HDFS_V3 = "/user/427966379/vvd_v3_result"
-HDFS_V2 = "/user/427966379/vvd_v2_result"
+# Load result_df from HDFS — try UCP-enriched first, then regular
+HDFS_PATHS = [
+    ("/user/427966379/vvd_v2_results_with_ucp", "v2 UCP-enriched"),
+    ("/user/427966379/vvd_v2_results.parquet", "v2 regular"),
+]
 
-try:
-    result_df = spark.read.parquet(HDFS_V3)
-    cnt = result_df.count()
-    print(f"Loaded result_df from v3 HDFS: {cnt:,} rows")
-except Exception:
-    result_df = spark.read.parquet(HDFS_V2)
-    cnt = result_df.count()
-    print(f"Loaded result_df from v2 HDFS (fallback): {cnt:,} rows")
+result_df = None
+for _path, _label in HDFS_PATHS:
+    try:
+        result_df = spark.read.parquet(_path)
+        cnt = result_df.count()
+        print(f"Loaded result_df from {_label}: {_path} ({cnt:,} rows)")
+        break
+    except Exception as e:
+        print(f"  {_label} not found: {_path}")
+
+if result_df is None:
+    raise RuntimeError("No result_df found on HDFS. Run pipeline + adhoc_save_hdfs.py first.")
 
 result_df = result_df.persist(StorageLevel.MEMORY_AND_DISK)
 mnes_in_data = sorted([r.MNE for r in result_df.select("MNE").distinct().collect()])
@@ -116,30 +122,15 @@ except Exception as e:
     print(f"POS load failed: {e}")
     HAS_POS = False
 
-# Load UCP (optional)
-UCP_PATH = "/prod/sz/tsz/00172/data/ucp4/MONTH_END_DATE={date}"
-HAS_UCP = False
-try:
-    import subprocess
-    ucp_check = subprocess.check_output(["hdfs", "dfs", "-ls", "/prod/sz/tsz/00172/data/ucp4/"], stderr=subprocess.STDOUT).decode()
-    ucp_dates = sorted([line.split("=")[-1] for line in ucp_check.strip().split("\n") if "MONTH_END_DATE=" in line])
-    if ucp_dates:
-        latest_ucp_date = ucp_dates[-1]
-        ucp_df = spark.read.parquet(UCP_PATH.format(date=latest_ucp_date))
-        ucp_df = (
-            ucp_df
-            .withColumn("CLNT_NO", F.regexp_replace(F.trim(F.col("CLNT_NO")), "^0+", ""))
-            .select("CLNT_NO").distinct()
-        )
-        # Verify it has rows
-        ucp_sample = ucp_df.limit(5).count()
-        if ucp_sample > 0:
-            HAS_UCP = True
-            print(f"UCP loaded from {latest_ucp_date}")
-        else:
-            print("UCP snapshot empty, skipping")
-except Exception as e:
-    print(f"UCP not available: {e}")
+# Detect UCP — check if result_df already has UCP columns (from enriched HDFS)
+_result_cols = [c.upper() for c in result_df.columns]
+HAS_UCP = "UCP_AGE" in _result_cols
+if HAS_UCP:
+    print(f"UCP columns detected in result_df (loaded UCP-enriched version)")
+    ucp_cols_found = [c for c in result_df.columns if c.startswith("UCP_")]
+    print(f"  {len(ucp_cols_found)} UCP columns: {ucp_cols_found[:5]}...")
+else:
+    print("No UCP columns in result_df — profiling cell will be skipped")
 
 print(f"\nSetup complete. HAS_POS={HAS_POS}, HAS_UCP={HAS_UCP}")
 
@@ -860,55 +851,21 @@ if not HAS_UCP:
     print("UCP not available — skipping profiling")
 else:
     try:
-        # Reload UCP with full columns
-        ucp_full = spark.read.parquet(UCP_PATH.format(date=latest_ucp_date))
-        ucp_full = (
-            ucp_full
-            .withColumn("CLNT_NO", F.regexp_replace(F.trim(F.col("CLNT_NO")), "^0+", ""))
-        )
+        # UCP columns already in result_df with UCP_ prefix
+        age_col = "UCP_AGE" if "UCP_AGE" in result_df.columns else None
+        tenure_col = "UCP_TENURE_RBC_YEARS" if "UCP_TENURE_RBC_YEARS" in result_df.columns else None
+        income_col = "UCP_INCOME_AFTER_TAX_RNG" if "UCP_INCOME_AFTER_TAX_RNG" in result_df.columns else None
 
-        # Select useful columns (age, tenure, income if available)
-        ucp_cols = [c.upper() for c in ucp_full.columns]
-        age_col = None
-        tenure_col = None
-        income_col = None
+        if age_col: print(f"  Age column: {age_col}")
+        if tenure_col: print(f"  Tenure column: {tenure_col}")
+        if income_col: print(f"  Income column: {income_col}")
 
-        for c in ucp_full.columns:
-            cu = c.upper()
-            if "AGE" in cu and age_col is None:
-                age_col = c
-            if "TENURE" in cu and tenure_col is None:
-                tenure_col = c
-            if "INCOME" in cu or "REVENUE" in cu and income_col is None:
-                income_col = c
+        enriched = result_df.filter(F.col("MNE").isin(list(CONFIG.keys())))
 
+        # Segment bucketing + effectiveness per segment
+        _segment_specs = []
         if age_col:
-            print(f"  Age column: {age_col}")
-        if tenure_col:
-            print(f"  Tenure column: {tenure_col}")
-        if income_col:
-            print(f"  Income column: {income_col}")
-
-        # Join to result_df
-        ucp_select_cols = ["CLNT_NO"]
-        if age_col:
-            ucp_select_cols.append(age_col)
-        if tenure_col:
-            ucp_select_cols.append(tenure_col)
-        if income_col:
-            ucp_select_cols.append(income_col)
-
-        ucp_slim = ucp_full.select(*ucp_select_cols).dropDuplicates(["CLNT_NO"])
-
-        enriched = (
-            result_df
-            .filter(F.col("MNE").isin(list(CONFIG.keys())))
-            .join(ucp_slim, "CLNT_NO", "left")
-        )
-
-        # Age bucketing
-        if age_col:
-            enriched = enriched.withColumn(
+            _segment_specs.append(("AGE", age_col, enriched.withColumn(
                 "AGE_BUCKET",
                 F.when(F.col(age_col).cast("int") < 25, "18-24")
                 .when(F.col(age_col).cast("int") < 35, "25-34")
@@ -916,12 +873,25 @@ else:
                 .when(F.col(age_col).cast("int") < 55, "45-54")
                 .when(F.col(age_col).cast("int") < 65, "55-64")
                 .otherwise("65+")
-            )
+            ), "AGE_BUCKET"))
+        if tenure_col:
+            _segment_specs.append(("TENURE", tenure_col, enriched.withColumn(
+                "TENURE_BUCKET",
+                F.when(F.col(tenure_col).cast("double") < 1, "0-1yr")
+                .when(F.col(tenure_col).cast("double") < 3, "1-3yr")
+                .when(F.col(tenure_col).cast("double") < 5, "3-5yr")
+                .when(F.col(tenure_col).cast("double") < 10, "5-10yr")
+                .otherwise("10yr+")
+            ), "TENURE_BUCKET"))
+        if income_col:
+            _segment_specs.append(("INCOME", income_col, enriched.withColumn(
+                "INCOME_BUCKET", F.coalesce(F.col(income_col), F.lit("UNKNOWN"))
+            ), "INCOME_BUCKET"))
 
-            # Effectiveness per age bucket
-            age_agg = (
-                enriched
-                .groupBy("MNE", "AGE_BUCKET", "TST_GRP_CD")
+        for grain_name, _src_col, seg_df, bucket_col in _segment_specs:
+            seg_agg = (
+                seg_df
+                .groupBy("MNE", bucket_col, "TST_GRP_CD")
                 .agg(
                     F.countDistinct("CLNT_NO").alias("clients"),
                     F.sum("SUCCESS").alias("successes"),
@@ -932,18 +902,17 @@ else:
             for mne in mnes_in_data:
                 if mne not in CONFIG:
                     continue
-                buckets = sorted(set(r.AGE_BUCKET for r in age_agg if r.MNE == mne and r.AGE_BUCKET is not None))
+                buckets = sorted(set(getattr(r, bucket_col) for r in seg_agg
+                                     if r.MNE == mne and getattr(r, bucket_col) is not None))
                 for bucket in buckets:
-                    action = [r for r in age_agg if r.MNE == mne and r.AGE_BUCKET == bucket
+                    action = [r for r in seg_agg if r.MNE == mne and getattr(r, bucket_col) == bucket
                               and r.TST_GRP_CD is not None and r.TST_GRP_CD.strip() == ACTION_GROUP]
-                    control = [r for r in age_agg if r.MNE == mne and r.AGE_BUCKET == bucket
+                    control = [r for r in seg_agg if r.MNE == mne and getattr(r, bucket_col) == bucket
                                and r.TST_GRP_CD is not None and r.TST_GRP_CD.strip() == CONTROL_GROUP]
                     if not action or not control:
                         continue
-                    a = action[0]
-                    c = control[0]
-                    a_clients = int(a.clients)
-                    c_clients = int(c.clients)
+                    a, c = action[0], control[0]
+                    a_clients, c_clients = int(a.clients), int(c.clients)
                     a_successes = int(a.successes or 0)
                     c_successes = int(c.successes or 0)
                     a_rate = a_successes / a_clients if a_clients > 0 else 0
@@ -951,7 +920,7 @@ else:
                     pvalue, lift_pp, ci_lower, ci_upper = _ztest_pvalue(a_successes, a_clients, c_successes, c_clients)
 
                     detail_rows.append({
-                        "MNE": mne, "GRAIN": "AGE", "SLICE": bucket,
+                        "MNE": mne, "GRAIN": grain_name, "SLICE": str(bucket),
                         "CLIENTS_ACTION": a_clients, "CLIENTS_CONTROL": c_clients,
                         "SUCCESSES_ACTION": a_successes, "SUCCESSES_CONTROL": c_successes,
                         "RATE_ACTION": round(a_rate * 100, 4), "RATE_CONTROL": round(c_rate * 100, 4),
@@ -961,14 +930,13 @@ else:
                         "INCREMENTAL": round(a_clients * lift_pp / 100, 1),
                     })
 
-            print(f"  Age bucket rows added to detail_rows")
+            print(f"  {grain_name} bucket rows added to detail_rows")
 
         # Decision tree per MNE (feature importance)
         try:
             from pyspark.ml.feature import VectorAssembler, StringIndexer
             from pyspark.ml.classification import DecisionTreeClassifier
 
-            # Build features: contact_count + channel + age if available
             contact_counts = (
                 result_df
                 .filter(F.trim(F.col("TST_GRP_CD")) == ACTION_GROUP)
@@ -979,21 +947,18 @@ else:
             tree_base = (
                 enriched
                 .filter(F.trim(F.col("TST_GRP_CD")) == ACTION_GROUP)
-                .select("MNE", "CLNT_NO", "SUCCESS", "TACTIC_CELL_CD")
+                .select("MNE", "CLNT_NO", "SUCCESS", "TACTIC_CELL_CD",
+                        *([age_col] if age_col else []))
                 .dropDuplicates(["MNE", "CLNT_NO"])
                 .join(contact_counts, ["MNE", "CLNT_NO"], "left")
             )
 
             if age_col:
-                tree_base = tree_base.join(
-                    ucp_slim.select("CLNT_NO", F.col(age_col).cast("double").alias("AGE_NUM")),
-                    "CLNT_NO", "left"
-                ).fillna(0, subset=["AGE_NUM"])
+                tree_base = tree_base.withColumn("AGE_NUM", F.col(age_col).cast("double")).fillna(0, subset=["AGE_NUM"])
 
             tree_base = tree_base.fillna(0, subset=["contact_count"])
             tree_base = tree_base.fillna("UNKNOWN", subset=["TACTIC_CELL_CD"])
 
-            # Index channel
             channel_indexer = StringIndexer(inputCol="TACTIC_CELL_CD", outputCol="channel_idx", handleInvalid="keep")
 
             feature_cols = ["contact_count", "channel_idx"]
