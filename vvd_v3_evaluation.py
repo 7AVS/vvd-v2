@@ -70,22 +70,26 @@ def download_csv(df, filename):
                  f'({size_mb:.2f} MB)'))
 
 # Load result_df
+_loaded_from_hdfs = False
 try:
     result_df.count()
-    print("result_df already in memory")
+    print("result_df already in memory (persisted by pipeline)")
 except NameError:
     try:
         HDFS_V3 = "/user/427966379/vvd_v3_result"
         result_df = spark.read.parquet(HDFS_V3)
         cnt = result_df.count()
         print(f"Loaded result_df from v3 HDFS: {cnt:,} rows")
+        _loaded_from_hdfs = True
     except Exception:
         HDFS_V2 = "/user/427966379/vvd_v2_result"
         result_df = spark.read.parquet(HDFS_V2)
         cnt = result_df.count()
         print(f"Loaded result_df from v2 HDFS (fallback): {cnt:,} rows")
+        _loaded_from_hdfs = True
 
-result_df.persist(StorageLevel.MEMORY_AND_DISK)
+if _loaded_from_hdfs:
+    result_df = result_df.persist(StorageLevel.MEMORY_AND_DISK)
 mnes_in_data = sorted([r.MNE for r in result_df.select("MNE").distinct().collect()])
 print(f"Campaigns in data: {mnes_in_data}")
 
