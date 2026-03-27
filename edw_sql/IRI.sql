@@ -5,15 +5,8 @@
 -- Output: mnc, cohort, test, vintage, leads, success (cumulative)
 -- =============================================================================
 
--- Step 1: Generate day grid 0-30
-WITH RECURSIVE day_sequence (day_num) AS (
-    SELECT 0 FROM sys_calendar.calendar WHERE calendar_date = DATE '1900-01-01'
-    UNION ALL
-    SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
-),
-
--- Step 2: Experiment population — CLNT_NO is a direct column in EDW tactic table
-tactic_history AS (
+-- Step 1: Experiment population — CLNT_NO is a direct column in EDW tactic table
+WITH tactic_history AS (
     SELECT
         a.CLNT_NO,
         TRIM(TST_GRP_CD)                                  AS test,
@@ -27,7 +20,7 @@ tactic_history AS (
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 ),
 
--- Step 3: Success — IMT transaction (mobile or online banking)
+-- Step 2: Success — IMT transaction (mobile or online banking)
 --         CLNT_NO is a direct column on EXT_CDP_CHNL_EVNT
 --         Join: A.CLNT_NO = B.CLNT_NO (both native columns)
 imt_success AS (
@@ -42,7 +35,7 @@ imt_success AS (
       AND b.CLNT_NO IN (SELECT CLNT_NO FROM tactic_history)
 ),
 
--- Step 4: Denominator — distinct clients per cohort/test
+-- Step 3: Denominator — distinct clients per cohort/test
 denominator AS (
     SELECT
         cohort,
@@ -50,6 +43,13 @@ denominator AS (
         COUNT(DISTINCT CLNT_NO) AS leads
     FROM tactic_history
     GROUP BY cohort, test
+),
+
+-- Step 4: Day grid 0-30 from sys_calendar (no recursion)
+day_sequence AS (
+    SELECT (calendar_date - DATE '2020-01-01') AS day_num
+    FROM sys_calendar.calendar
+    WHERE calendar_date BETWEEN DATE '2020-01-01' AND DATE '2020-01-31'
 ),
 
 -- Step 5: Complete grid — every cohort/test gets days 0-30
