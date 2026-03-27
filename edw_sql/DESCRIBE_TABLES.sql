@@ -1,21 +1,58 @@
 -- =============================================================================
--- Schema discovery queries — run each one separately in Teradata SQL Editor
+-- Schema discovery — try each approach until one works
 -- =============================================================================
 
--- 1. Tactic population (VVD campaigns)
-HELP TABLE DG6V01.TACTIC_EVNT_IP_AR_HIST;
+-- Option 1: SHOW TABLE (returns DDL)
+SHOW TABLE DG6V01.TACTIC_EVNT_IP_AR_HIST;
 
--- 2. Card table (acquisition/activation — VCN, VDA, VDT)
-HELP TABLE DDWV01.VISA_DR_CRD_DIY;
+-- Option 2: HELP COLUMN (lists columns with types)
+HELP COLUMN DG6V01.TACTIC_EVNT_IP_AR_HIST.*;
 
--- 3. POS / transaction table (usage — VUI, also wallet provisioning — VUT, VAW)
-HELP TABLE DDWV05.CLNT_CRD_POS_LOG;
+-- Option 3: DBC.COLUMNS view (system catalog — always works)
+SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
+FROM DBC.COLUMNS
+WHERE DatabaseName = 'DG6V01'
+  AND TableName = 'TACTIC_EVNT_IP_AR_HIST'
+ORDER BY ColumnId;
 
--- 4. Token list (wallet provisioning — VUT, VAW)
-HELP TABLE DL_DECMAN.TOKEN_LIST;
+-- Option 4: SELECT TOP 1 (see actual data + implicit types)
+SELECT TOP 1 * FROM DG6V01.TACTIC_EVNT_IP_AR_HIST;
 
--- 5. Tactic population (IMT campaigns — IPC, IRI)
-HELP TABLE DTZV01.TACTIC_EVNT_IP_AR_H60M;
+-- =============================================================================
+-- Repeat for each table — use whichever option works above
+-- =============================================================================
 
--- 6. IMT success events (IPC, IRI)
-HELP TABLE DDWV01.EXT_CDP_CHNL_EVNT;
+-- Card table
+SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
+FROM DBC.COLUMNS
+WHERE DatabaseName = 'DDWV01'
+  AND TableName = 'VISA_DR_CRD_DIY'
+ORDER BY ColumnId;
+
+-- POS table
+SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
+FROM DBC.COLUMNS
+WHERE DatabaseName = 'DDWV05'
+  AND TableName = 'CLNT_CRD_POS_LOG'
+ORDER BY ColumnId;
+
+-- Token list
+SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
+FROM DBC.COLUMNS
+WHERE DatabaseName = 'DL_DECMAN'
+  AND TableName = 'TOKEN_LIST'
+ORDER BY ColumnId;
+
+-- IMT tactic table
+SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
+FROM DBC.COLUMNS
+WHERE DatabaseName = 'DTZV01'
+  AND TableName = 'TACTIC_EVNT_IP_AR_H60M'
+ORDER BY ColumnId;
+
+-- IMT success events
+SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
+FROM DBC.COLUMNS
+WHERE DatabaseName = 'DDWV01'
+  AND TableName = 'EXT_CDP_CHNL_EVNT'
+ORDER BY ColumnId;
