@@ -5,7 +5,13 @@
 -- Output: vintage curve (mnc, cohort, test, vintage, leads, success)
 -- Note: day_sequence ensures a complete 0-30 day grid; days with no successes carry forward via cumulative SUM.
 
-WITH tactic_history AS (
+WITH RECURSIVE day_sequence (day_num) AS (
+    SELECT 0
+    UNION ALL
+    SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
+),
+
+tactic_history AS (
     SELECT
         TRIM(REGEXP_REPLACE(TACTIC_EVNT_ID, '^0+', ''))  AS clnt_no,
         TRIM(TST_GRP_CD)                                  AS test,
@@ -41,12 +47,6 @@ denominator AS (
         COUNT(DISTINCT clnt_no) AS leads
     FROM tactic_history
     GROUP BY cohort, test
-),
-
-day_sequence AS (
-    SELECT ROW_NUMBER() OVER (ORDER BY calendar_date) - 1 AS day_num
-    FROM sys_calendar.calendar
-    WHERE calendar_date BETWEEN DATE '2020-01-01' AND DATE '2020-01-31'
 ),
 
 cohort_days AS (
