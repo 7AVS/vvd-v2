@@ -39,6 +39,7 @@ txn_success AS (
       AND b.AMT1 > 0
       AND b.txn_tp IN (10, 13)
       AND b.TXN_DT >= DATE '2025-01-01'
+      AND SUBSTR(b.CLNT_CRD_NO, 7, 9) IN (SELECT CLNT_NO FROM tactic_history)
 ),
 
 -- Step 4: Denominator — distinct clients per cohort/test

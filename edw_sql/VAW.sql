@@ -43,6 +43,7 @@ wallet_success AS (
       AND b.APPROVAL_CODE IS NOT NULL
       AND t.TOKEN_WALLET_IND = 'Y'
       AND b.TXN_DT >= DATE '2025-01-01'
+      AND SUBSTR(b.CLNT_CRD_NO, 7, 9) IN (SELECT CLNT_NO FROM tactic_history)
 ),
 
 -- Step 4: Denominator — distinct clients per cohort/test

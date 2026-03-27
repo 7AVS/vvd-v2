@@ -37,6 +37,7 @@ card_success AS (
       AND b.SRVC_ID = 36
       AND b.ACTV_DT IS NOT NULL
       AND b.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DIY)
+      AND b.CLNT_NO IN (SELECT CLNT_NO FROM tactic_history)
 ),
 
 -- Step 4: Denominator — distinct clients per cohort/test

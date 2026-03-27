@@ -39,6 +39,7 @@ imt_success AS (
       AND b.CHNL_TYP_CD IN ('021', '034')
       AND b.SRC_DTA_STORE_CD IN ('139', '140')
       AND b.CAPTR_DT >= DATE '2025-01-01'
+      AND b.CLNT_NO IN (SELECT CLNT_NO FROM tactic_history)
 ),
 
 -- Step 4: Denominator — distinct clients per cohort/test
