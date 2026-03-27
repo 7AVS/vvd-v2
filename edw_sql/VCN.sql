@@ -1,9 +1,19 @@
--- VCN — Contextual Notification | Metric: card_acquisition | Window: 30 days
--- Source tables: DG6V01.TACTIC_EVNT_IP_AR_HIST, DDWV01.VISA_DR_CRD_DIY
--- Output: vintage curve (mnc, cohort, test, vintage, leads, success)
--- Note: day_sequence ensures a complete 0-30 day grid; days with no successes carry forward via cumulative SUM.
+-- =============================================================================
+-- VCN — Contextual Notification
+-- Metric: card_acquisition | Window: 30 days
+-- Source: DG6V01.TACTIC_EVNT_IP_AR_HIST + DDWV01.VISA_DR_CRD_DIY
+-- Output: mnc, cohort, test, vintage, leads, success (cumulative)
+-- =============================================================================
 
-WITH tactic_history AS (
+-- Step 1: Generate day grid 0-30
+WITH RECURSIVE day_sequence (day_num) AS (
+    SELECT 0 FROM sys_calendar.calendar WHERE calendar_date = DATE '1900-01-01'
+    UNION ALL
+    SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
+),
+
+-- Step 2: Experiment population — all VCN clients (Action TG4, Control TG7)
+tactic_history AS (
     SELECT
         TRIM(REGEXP_REPLACE(TACTIC_EVNT_ID, '^0+', ''))  AS clnt_no,
         TRIM(TST_GRP_CD)                                  AS test,
@@ -16,6 +26,7 @@ WITH tactic_history AS (
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 ),
 
+-- Step 3: Success — card acquisition (new VVD card issued, active status)
 card_success AS (
     SELECT
         TRIM(REGEXP_REPLACE(CAST(CLNT_NO AS VARCHAR(20)), '^0+', '')) AS clnt_no,
@@ -26,6 +37,7 @@ card_success AS (
       AND SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DIY)
 ),
 
+-- Step 4: Denominator — distinct clients per cohort/test
 denominator AS (
     SELECT
         cohort,
@@ -35,12 +47,7 @@ denominator AS (
     GROUP BY cohort, test
 ),
 
-day_sequence AS (
-    SELECT ROW_NUMBER() OVER (ORDER BY calendar_date) - 1 AS day_num
-    FROM sys_calendar.calendar
-    WHERE calendar_date BETWEEN DATE '2020-01-01' AND DATE '2020-01-31'
-),
-
+-- Step 5: Complete grid — every cohort/test gets days 0-30
 cohort_days AS (
     SELECT
         d.cohort,
@@ -51,6 +58,7 @@ cohort_days AS (
     CROSS JOIN day_sequence s
 ),
 
+-- Step 6: First success per client — days from treatment start
 vintage_raw AS (
     SELECT
         a.cohort,
@@ -66,6 +74,7 @@ vintage_raw AS (
     ) = 1
 ),
 
+-- Step 7: Count successes per day
 success_per_day AS (
     SELECT
         cohort,
@@ -73,9 +82,11 @@ success_per_day AS (
         vintage,
         COUNT(*) AS day_success
     FROM vintage_raw
+    WHERE vintage BETWEEN 0 AND 30
     GROUP BY cohort, test, vintage
 )
 
+-- Step 8: Final output — cumulative success over the day grid
 SELECT
     'VCN'  AS mnc,
     g.cohort,

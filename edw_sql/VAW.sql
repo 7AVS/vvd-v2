@@ -1,16 +1,18 @@
--- VAW — Add To Wallet | Metric: wallet_provisioning | Window: 30 days
--- Source tables: DG6V01.TACTIC_EVNT_IP_AR_HIST, DDWV05.CLNT_CRD_POS_LOG, DL_DECMAN.TOKEN_LIST
--- Success: zero-dollar provisioning txn (AMT1=0), VVD BIN (45190/45199), token confirmed
--- Note: add TXN_DT date filter to avoid full EDW scan (known performance gotcha)
--- Output: vintage curve (mnc, cohort, test, vintage, leads, success)
--- Note: day_sequence ensures a complete 0-30 day grid; days with no successes carry forward via cumulative SUM.
+-- =============================================================================
+-- VAW — Add To Wallet
+-- Metric: wallet_provisioning | Window: 30 days
+-- Source: DG6V01.TACTIC_EVNT_IP_AR_HIST + DDWV05.CLNT_CRD_POS_LOG + DL_DECMAN.TOKEN_LIST
+-- Output: mnc, cohort, test, vintage, leads, success (cumulative)
+-- =============================================================================
 
+-- Step 1: Generate day grid 0-30
 WITH RECURSIVE day_sequence (day_num) AS (
-    SELECT 0 FROM (SELECT 1) t
+    SELECT 0 FROM sys_calendar.calendar WHERE calendar_date = DATE '1900-01-01'
     UNION ALL
     SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
 ),
 
+-- Step 2: Experiment population — all VAW clients (Action TG4, Control TG7)
 tactic_history AS (
     SELECT
         TRIM(REGEXP_REPLACE(TACTIC_EVNT_ID, '^0+', ''))  AS clnt_no,
@@ -24,6 +26,7 @@ tactic_history AS (
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 ),
 
+-- Step 3: Success — wallet provisioning (zero-dollar token txn, VVD BIN, confirmed wallet)
 wallet_success AS (
     SELECT
         TRIM(LEADING '0' FROM CAST(SUBSTR(b.CLNT_CRD_NO, 7, 9) AS VARCHAR(9))) AS clnt_no,
@@ -40,6 +43,7 @@ wallet_success AS (
       AND b.TXN_DT >= DATE '2025-01-01'
 ),
 
+-- Step 4: Denominator — distinct clients per cohort/test
 denominator AS (
     SELECT
         cohort,
@@ -49,6 +53,7 @@ denominator AS (
     GROUP BY cohort, test
 ),
 
+-- Step 5: Complete grid — every cohort/test gets days 0-30
 cohort_days AS (
     SELECT
         d.cohort,
@@ -59,6 +64,7 @@ cohort_days AS (
     CROSS JOIN day_sequence s
 ),
 
+-- Step 6: First success per client — days from treatment start
 vintage_raw AS (
     SELECT
         a.cohort,
@@ -74,6 +80,7 @@ vintage_raw AS (
     ) = 1
 ),
 
+-- Step 7: Count successes per day
 success_per_day AS (
     SELECT
         cohort,
@@ -81,9 +88,11 @@ success_per_day AS (
         vintage,
         COUNT(*) AS day_success
     FROM vintage_raw
+    WHERE vintage BETWEEN 0 AND 30
     GROUP BY cohort, test, vintage
 )
 
+-- Step 8: Final output — cumulative success over the day grid
 SELECT
     'VAW'  AS mnc,
     g.cohort,
