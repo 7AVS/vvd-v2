@@ -51,23 +51,36 @@ vintage_raw AS (
 )
 
 SELECT
-    'VDT'              AS mnc,
-    d.TREATMT_END_DT,
-    d.test,
-    v.vintage,
-    d.leads,
-    COUNT(*)           AS success
-FROM denominator d
-JOIN vintage_raw v
-    ON d.TREATMT_END_DT = v.TREATMT_END_DT
-    AND d.test = v.test
-GROUP BY
-    d.TREATMT_END_DT,
-    d.test,
-    v.vintage,
-    d.leads
+    mnc,
+    TREATMT_END_DT,
+    test,
+    vintage,
+    leads,
+    SUM(day_success) OVER (
+        PARTITION BY TREATMT_END_DT, test
+        ORDER BY vintage
+        ROWS UNBOUNDED PRECEDING
+    ) AS success
+FROM (
+    SELECT
+        'VDT'              AS mnc,
+        d.TREATMT_END_DT,
+        d.test,
+        v.vintage,
+        d.leads,
+        COUNT(*)           AS day_success
+    FROM denominator d
+    JOIN vintage_raw v
+        ON d.TREATMT_END_DT = v.TREATMT_END_DT
+        AND d.test = v.test
+    GROUP BY
+        d.TREATMT_END_DT,
+        d.test,
+        v.vintage,
+        d.leads
+) daily
 ORDER BY
-    d.TREATMT_END_DT,
-    d.test,
-    v.vintage
+    TREATMT_END_DT,
+    test,
+    vintage
 ;
