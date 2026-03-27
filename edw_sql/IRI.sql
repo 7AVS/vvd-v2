@@ -1,0 +1,73 @@
+-- IRI — IMT Reactive/Trigger Campaign | Metric: imt_success (first IMT transaction)
+-- Source tables: DTZV01.TACTIC_EVNT_IP_AR_H60M, DDWV01.EXT_CDP_CHNL_EVNT
+-- Output: vintage curve (mnc, treatmt_end_dt, test, vintage, leads, success)
+
+WITH tactic_history AS (
+    SELECT
+        TRIM(CAST(CLNT_NO AS VARCHAR(20)))                AS clnt_no,
+        TRIM(TST_GRP_CD)                                  AS test,
+        TREATMT_STRT_DT,
+        TREATMT_END_DT
+    FROM DTZV01.TACTIC_EVNT_IP_AR_H60M a
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'IRI'
+      AND a.TACTIC_ID <> '20221891RI'
+      AND TRIM(TST_GRP_CD) IN ('TG4', 'TG7')
+      AND a.TREATMT_END_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+),
+
+imt_success AS (
+    SELECT
+        TRIM(CAST(CLNT_NO AS VARCHAR(20))) AS clnt_no,
+        CAPTR_DT                           AS success_dt
+    FROM DDWV01.EXT_CDP_CHNL_EVNT
+    WHERE ACTVY_TYP_CD = '031'
+      AND CHNL_TYP_CD IN ('021', '034')
+      AND SRC_DTA_STORE_CD IN ('139', '140')
+      AND CAPTR_DT >= DATE '2025-01-01'
+),
+
+denominator AS (
+    SELECT
+        TREATMT_END_DT,
+        test,
+        COUNT(DISTINCT clnt_no) AS leads
+    FROM tactic_history
+    GROUP BY TREATMT_END_DT, test
+),
+
+vintage_raw AS (
+    SELECT
+        a.test,
+        a.TREATMT_END_DT,
+        (b.success_dt - a.TREATMT_END_DT) AS vintage
+    FROM tactic_history a
+    JOIN imt_success b
+        ON a.clnt_no = b.clnt_no
+        AND b.success_dt BETWEEN a.TREATMT_STRT_DT AND a.TREATMT_END_DT
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY a.clnt_no, a.TREATMT_STRT_DT
+        ORDER BY b.success_dt ASC
+    ) = 1
+)
+
+SELECT
+    'IRI'              AS mnc,
+    d.TREATMT_END_DT,
+    d.test,
+    v.vintage,
+    d.leads,
+    COUNT(*)           AS success
+FROM denominator d
+JOIN vintage_raw v
+    ON d.TREATMT_END_DT = v.TREATMT_END_DT
+    AND d.test = v.test
+GROUP BY
+    d.TREATMT_END_DT,
+    d.test,
+    v.vintage,
+    d.leads
+ORDER BY
+    d.TREATMT_END_DT,
+    d.test,
+    v.vintage
+;
