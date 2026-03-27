@@ -12,10 +12,10 @@ WITH RECURSIVE day_sequence (day_num) AS (
     SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
 ),
 
--- Step 2: Experiment population — all VDT clients (Action TG4, Control TG7)
+-- Step 2: Experiment population — CLNT_NO is a direct column in EDW tactic table
 tactic_history AS (
     SELECT
-        TRIM(REGEXP_REPLACE(TACTIC_EVNT_ID, '^0+', ''))  AS clnt_no,
+        a.CLNT_NO,
         TRIM(TST_GRP_CD)                                  AS test,
         TREATMT_STRT_DT,
         TREATMT_END_DT,
@@ -27,15 +27,16 @@ tactic_history AS (
 ),
 
 -- Step 3: Success — card activation (ACTV_DT, not ISS_DT)
+--         Join: A.CLNT_NO = B.CLNT_NO (both native columns)
 card_success AS (
     SELECT
-        TRIM(REGEXP_REPLACE(CAST(CLNT_NO AS VARCHAR(20)), '^0+', '')) AS clnt_no,
-        ACTV_DT AS success_dt
-    FROM DDWV01.VISA_DR_CRD_DIY
-    WHERE STS_CD IN ('06', '08')
-      AND SRVC_ID = 36
-      AND ACTV_DT IS NOT NULL
-      AND SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DIY)
+        b.CLNT_NO,
+        b.ACTV_DT AS success_dt
+    FROM DDWV01.VISA_DR_CRD_DIY b
+    WHERE b.STS_CD IN ('06', '08')
+      AND b.SRVC_ID = 36
+      AND b.ACTV_DT IS NOT NULL
+      AND b.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DIY)
 ),
 
 -- Step 4: Denominator — distinct clients per cohort/test
@@ -43,7 +44,7 @@ denominator AS (
     SELECT
         cohort,
         test,
-        COUNT(DISTINCT clnt_no) AS leads
+        COUNT(DISTINCT CLNT_NO) AS leads
     FROM tactic_history
     GROUP BY cohort, test
 ),
@@ -67,10 +68,10 @@ vintage_raw AS (
         (b.success_dt - a.TREATMT_STRT_DT) AS vintage
     FROM tactic_history a
     JOIN card_success b
-        ON a.clnt_no = b.clnt_no
+        ON a.CLNT_NO = b.CLNT_NO
         AND b.success_dt BETWEEN a.TREATMT_STRT_DT AND a.TREATMT_END_DT
     QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY a.clnt_no, a.TREATMT_STRT_DT
+        PARTITION BY a.CLNT_NO, a.TREATMT_STRT_DT
         ORDER BY b.success_dt ASC
     ) = 1
 ),

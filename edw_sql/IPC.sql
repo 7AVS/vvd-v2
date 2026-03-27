@@ -12,10 +12,10 @@ WITH RECURSIVE day_sequence (day_num) AS (
     SELECT day_num + 1 FROM day_sequence WHERE day_num < 90
 ),
 
--- Step 2: Experiment population — all IPC clients (Action TG4, Control TG7)
+-- Step 2: Experiment population — CLNT_NO is a direct column in EDW tactic table
 tactic_history AS (
     SELECT
-        TRIM(CAST(CLNT_NO AS VARCHAR(20)))                AS clnt_no,
+        a.CLNT_NO,
         TRIM(TST_GRP_CD)                                  AS test,
         TREATMT_STRT_DT,
         TREATMT_END_DT,
@@ -28,15 +28,17 @@ tactic_history AS (
 ),
 
 -- Step 3: Success — IMT transaction (mobile or online banking)
+--         CLNT_NO is a direct column on EXT_CDP_CHNL_EVNT
+--         Join: A.CLNT_NO = B.CLNT_NO (both native columns)
 imt_success AS (
     SELECT
-        TRIM(CAST(CLNT_NO AS VARCHAR(20))) AS clnt_no,
-        CAPTR_DT                           AS success_dt
-    FROM DDWV01.EXT_CDP_CHNL_EVNT
-    WHERE ACTVY_TYP_CD = '031'
-      AND CHNL_TYP_CD IN ('021', '034')
-      AND SRC_DTA_STORE_CD IN ('139', '140')
-      AND CAPTR_DT >= DATE '2025-01-01'
+        b.CLNT_NO,
+        b.CAPTR_DT AS success_dt
+    FROM DDWV01.EXT_CDP_CHNL_EVNT b
+    WHERE b.ACTVY_TYP_CD = '031'
+      AND b.CHNL_TYP_CD IN ('021', '034')
+      AND b.SRC_DTA_STORE_CD IN ('139', '140')
+      AND b.CAPTR_DT >= DATE '2025-01-01'
 ),
 
 -- Step 4: Denominator — distinct clients per cohort/test
@@ -44,7 +46,7 @@ denominator AS (
     SELECT
         cohort,
         test,
-        COUNT(DISTINCT clnt_no) AS leads
+        COUNT(DISTINCT CLNT_NO) AS leads
     FROM tactic_history
     GROUP BY cohort, test
 ),
@@ -68,10 +70,10 @@ vintage_raw AS (
         (b.success_dt - a.TREATMT_STRT_DT) AS vintage
     FROM tactic_history a
     JOIN imt_success b
-        ON a.clnt_no = b.clnt_no
+        ON a.CLNT_NO = b.CLNT_NO
         AND b.success_dt BETWEEN a.TREATMT_STRT_DT AND a.TREATMT_END_DT
     QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY a.clnt_no, a.TREATMT_STRT_DT
+        PARTITION BY a.CLNT_NO, a.TREATMT_STRT_DT
         ORDER BY b.success_dt ASC
     ) = 1
 ),
