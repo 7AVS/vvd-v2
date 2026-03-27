@@ -11,8 +11,6 @@ WITH tactic_history AS (
         TREATMT_END_DT
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VDT'
-      AND substr(a.TACTIC_DECISN_VRB_INFO, 1, 10) = a.TACTIC_ID
-      AND a.Tactic_adnc_typ_cd = 1
       AND TRIM(TST_GRP_CD) IN ('TG4', 'TG7')
       AND a.TREATMT_END_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 ),
