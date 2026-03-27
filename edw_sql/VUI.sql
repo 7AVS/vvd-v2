@@ -38,10 +38,11 @@ denominator AS (
     GROUP BY cohort, test
 ),
 
-day_sequence (day_num) AS (
-    SELECT 0
-    UNION ALL
-    SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
+day_sequence AS (
+    SELECT (t.n * 10 + u.n) AS day_num
+    FROM (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3) t
+    CROSS JOIN (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) u
+    WHERE (t.n * 10 + u.n) <= 30
 ),
 
 cohort_days AS (
