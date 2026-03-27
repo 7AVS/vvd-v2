@@ -39,7 +39,7 @@ vintage_raw AS (
     SELECT
         a.test,
         a.TREATMT_END_DT,
-        (b.success_dt - a.TREATMT_END_DT) AS vintage
+        (b.success_dt - a.TREATMT_STRT_DT) AS vintage
     FROM tactic_history a
     JOIN imt_success b
         ON a.clnt_no = b.clnt_no
