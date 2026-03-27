@@ -6,7 +6,7 @@
 -- Note: day_sequence ensures a complete 0-30 day grid; days with no successes carry forward via cumulative SUM.
 
 WITH RECURSIVE day_sequence (day_num) AS (
-    SELECT 0
+    SELECT 0 FROM (SELECT 1) t
     UNION ALL
     SELECT day_num + 1 FROM day_sequence WHERE day_num < 30
 ),
