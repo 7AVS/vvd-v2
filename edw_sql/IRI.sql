@@ -80,19 +80,19 @@ success_per_day AS (
 
 SELECT
     'IRI'  AS mnc,
-    cd.cohort,
-    cd.test,
-    cd.vintage,
-    cd.leads,
+    g.cohort,
+    g.test,
+    g.vintage,
+    g.leads,
     SUM(COALESCE(spd.day_success, 0)) OVER (
-        PARTITION BY cd.cohort, cd.test
-        ORDER BY cd.vintage
+        PARTITION BY g.cohort, g.test
+        ORDER BY g.vintage
         ROWS UNBOUNDED PRECEDING
     ) AS success
-FROM cohort_days cd
+FROM cohort_days g
 LEFT JOIN success_per_day spd
-    ON cd.cohort = spd.cohort
-    AND cd.test  = spd.test
-    AND cd.vintage = spd.vintage
-ORDER BY cd.cohort, cd.test, cd.vintage
+    ON g.cohort = spd.cohort
+    AND g.test  = spd.test
+    AND g.vintage = spd.vintage
+ORDER BY g.cohort, g.test, g.vintage
 ;
