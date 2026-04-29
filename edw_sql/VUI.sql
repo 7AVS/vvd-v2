@@ -23,7 +23,6 @@ tactic_history AS (
         TO_CHAR(TREATMT_STRT_DT, 'YYYY-MM')               AS cohort
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VUI'
-      AND TRIM(TST_GRP_CD) IN ('TG4', 'TG7')
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 ),
 
