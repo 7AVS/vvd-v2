@@ -1,9 +1,12 @@
 -- =============================================================================
--- VVD CAMPAIGN SUMMARIES — 6 independent queries (no CTEs, no UNION)
+-- PAYMENT CAMPAIGN SUMMARIES — 8 independent queries (no CTEs, no UNION)
 -- Each query: one row per tactic_id × treatment start date × test group
--- Columns: mnc | tactic_id | treatmt_strt_dt | test (TG4/TG7) | leads | success
+-- Columns: mnc | tactic_id | treatmt_strt_dt | test | leads | success
 -- Window: TREATMT_STRT_DT .. TREATMT_END_DT (per-tactic, set in tactic table)
 -- Run each block independently in Teradata.
+--
+-- VVD campaigns: VCN, VDA, VDT, VUI, VUT, VAW
+-- IMT campaigns: IPC, IRI
 -- =============================================================================
 
 
@@ -144,6 +147,52 @@ LEFT JOIN DL_DECMAN.TOKEN_LIST t
     ON b.TOKN_REQSTR_ID = t.TOKEN_ID
     AND t.TOKEN_WALLET_IND = 'Y'
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VAW'
+  AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
+
+
+-- IPC — imt_success (IMT Proactive) ---------------------------------------
+SELECT
+    'IPC'                                  AS mnc,
+    TRIM(a.TACTIC_ID)                      AS tactic_id,
+    a.TREATMT_STRT_DT                      AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                     AS test,
+    COUNT(DISTINCT a.CLNT_NO)              AS leads,
+    COUNT(DISTINCT b.CLNT_NO)              AS success
+FROM DTZV01.TACTIC_EVNT_IP_AR_H60M a
+LEFT JOIN DDWV01.EXT_CDP_CHNL_EVNT b
+    ON a.CLNT_NO = b.CLNT_NO
+    AND b.ACTVY_TYP_CD = '031'
+    AND b.CHNL_TYP_CD IN ('021', '034')
+    AND b.SRC_DTA_STORE_CD IN ('139', '140')
+    AND b.CAPTR_DT BETWEEN a.TREATMT_STRT_DT AND a.TREATMT_END_DT
+WHERE substr(a.TACTIC_ID, 8, 3) = 'IPC'
+  AND a.TACTIC_ID <> '20221891RI'
+  AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
+
+
+-- IRI — imt_success (IMT Reactive/Trigger) --------------------------------
+SELECT
+    'IRI'                                  AS mnc,
+    TRIM(a.TACTIC_ID)                      AS tactic_id,
+    a.TREATMT_STRT_DT                      AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                     AS test,
+    COUNT(DISTINCT a.CLNT_NO)              AS leads,
+    COUNT(DISTINCT b.CLNT_NO)              AS success
+FROM DTZV01.TACTIC_EVNT_IP_AR_H60M a
+LEFT JOIN DDWV01.EXT_CDP_CHNL_EVNT b
+    ON a.CLNT_NO = b.CLNT_NO
+    AND b.ACTVY_TYP_CD = '031'
+    AND b.CHNL_TYP_CD IN ('021', '034')
+    AND b.SRC_DTA_STORE_CD IN ('139', '140')
+    AND b.CAPTR_DT BETWEEN a.TREATMT_STRT_DT AND a.TREATMT_END_DT
+WHERE substr(a.TACTIC_ID, 8, 3) = 'IRI'
+  AND a.TACTIC_ID <> '20221891RI'
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 GROUP BY 1, 2, 3, 4
 ORDER BY 2, 3, 4
