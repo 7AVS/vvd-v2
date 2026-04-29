@@ -1,7 +1,7 @@
 -- =============================================================================
 -- VCN — Contextual Notification
 -- Metric: card_acquisition | Window: 30 days
--- Source: DG6V01.TACTIC_EVNT_IP_AR_HIST + DDWV01.VISA_DR_CRD_DIY
+-- Source: DG6V01.TACTIC_EVNT_IP_AR_HIST + DDWV01.VISA_DR_CRD_DLY
 -- Output: mnc, cohort, test, vintage, leads, success (cumulative)
 -- =============================================================================
 
@@ -27,16 +27,16 @@ tactic_history AS (
 ),
 
 -- Step 3: Success — card acquisition (new VVD card issued, active status)
---         CLNT_NO is a direct column on VISA_DR_CRD_DIY
+--         CLNT_NO is a direct column on VISA_DR_CRD_DLY
 --         Join: A.CLNT_NO = B.CLNT_NO (both native columns)
 card_success AS (
     SELECT
         b.CLNT_NO,
         b.ISS_DT AS success_dt
-    FROM DDWV01.VISA_DR_CRD_DIY b
+    FROM DDWV01.VISA_DR_CRD_DLY b
     WHERE b.STS_CD IN ('06', '08')
       AND b.SRVC_ID = 36
-      AND b.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DIY)
+      AND b.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DLY)
       AND b.CLNT_NO IN (SELECT CLNT_NO FROM tactic_history)
 ),
 

@@ -26,7 +26,7 @@ SELECT TOP 1 * FROM DG6V01.TACTIC_EVNT_IP_AR_HIST;
 SELECT ColumnName, ColumnType, ColumnLength, DecimalTotalDigits, DecimalFractionalDigits, Nullable
 FROM DBC.COLUMNS
 WHERE DatabaseName = 'DDWV01'
-  AND TableName = 'VISA_DR_CRD_DIY'
+  AND TableName = 'VISA_DR_CRD_DLY'
 ORDER BY ColumnId;
 
 -- POS table
