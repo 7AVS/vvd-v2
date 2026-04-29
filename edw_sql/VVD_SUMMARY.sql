@@ -1,14 +1,17 @@
 -- =============================================================================
--- VVD ALL CAMPAIGNS — flat summary (no CTEs)
--- One row per campaign × cohort × test group
--- Columns: mnc | cohort (YYYY-MM) | test (TG4/TG7) | leads | success
+-- VVD CAMPAIGN SUMMARIES — 6 independent queries (no CTEs, no UNION)
+-- Each query: one row per tactic_id × treatment start date × test group
+-- Columns: mnc | tactic_id | treatmt_strt_dt | test (TG4/TG7) | leads | success
 -- Window: TREATMT_STRT_DT .. TREATMT_END_DT (per-tactic, set in tactic table)
+-- Run each block independently in Teradata.
 -- =============================================================================
 
--- VCN — card_acquisition
+
+-- VCN — card_acquisition --------------------------------------------------
 SELECT
     'VCN'                                  AS mnc,
-    TO_CHAR(a.TREATMT_STRT_DT, 'YYYY-MM')  AS cohort,
+    TRIM(a.TACTIC_ID)                      AS tactic_id,
+    a.TREATMT_STRT_DT                      AS treatmt_strt_dt,
     TRIM(a.TST_GRP_CD)                     AS test,
     COUNT(DISTINCT a.CLNT_NO)              AS leads,
     COUNT(DISTINCT b.CLNT_NO)              AS success
@@ -22,17 +25,19 @@ LEFT JOIN DDWV01.VISA_DR_CRD_DIY b
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VCN'
   AND TRIM(a.TST_GRP_CD) IN ('TG4', 'TG7')
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
 
-UNION ALL
 
--- VDA — card_acquisition
+-- VDA — card_acquisition --------------------------------------------------
 SELECT
-    'VDA',
-    TO_CHAR(a.TREATMT_STRT_DT, 'YYYY-MM'),
-    TRIM(a.TST_GRP_CD),
-    COUNT(DISTINCT a.CLNT_NO),
-    COUNT(DISTINCT b.CLNT_NO)
+    'VDA'                                  AS mnc,
+    TRIM(a.TACTIC_ID)                      AS tactic_id,
+    a.TREATMT_STRT_DT                      AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                     AS test,
+    COUNT(DISTINCT a.CLNT_NO)              AS leads,
+    COUNT(DISTINCT b.CLNT_NO)              AS success
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
 LEFT JOIN DDWV01.VISA_DR_CRD_DIY b
     ON a.CLNT_NO = b.CLNT_NO
@@ -43,17 +48,19 @@ LEFT JOIN DDWV01.VISA_DR_CRD_DIY b
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VDA'
   AND TRIM(a.TST_GRP_CD) IN ('TG4', 'TG7')
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
 
-UNION ALL
 
--- VDT — card_activation
+-- VDT — card_activation ---------------------------------------------------
 SELECT
-    'VDT',
-    TO_CHAR(a.TREATMT_STRT_DT, 'YYYY-MM'),
-    TRIM(a.TST_GRP_CD),
-    COUNT(DISTINCT a.CLNT_NO),
-    COUNT(DISTINCT b.CLNT_NO)
+    'VDT'                                  AS mnc,
+    TRIM(a.TACTIC_ID)                      AS tactic_id,
+    a.TREATMT_STRT_DT                      AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                     AS test,
+    COUNT(DISTINCT a.CLNT_NO)              AS leads,
+    COUNT(DISTINCT b.CLNT_NO)              AS success
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
 LEFT JOIN DDWV01.VISA_DR_CRD_DIY b
     ON a.CLNT_NO = b.CLNT_NO
@@ -65,17 +72,19 @@ LEFT JOIN DDWV01.VISA_DR_CRD_DIY b
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VDT'
   AND TRIM(a.TST_GRP_CD) IN ('TG4', 'TG7')
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
 
-UNION ALL
 
--- VUI — card_usage
+-- VUI — card_usage --------------------------------------------------------
 SELECT
-    'VUI',
-    TO_CHAR(a.TREATMT_STRT_DT, 'YYYY-MM'),
-    TRIM(a.TST_GRP_CD),
-    COUNT(DISTINCT a.CLNT_NO),
-    COUNT(DISTINCT SUBSTR(b.CLNT_CRD_NO, 7, 9))
+    'VUI'                                            AS mnc,
+    TRIM(a.TACTIC_ID)                                AS tactic_id,
+    a.TREATMT_STRT_DT                                AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                               AS test,
+    COUNT(DISTINCT a.CLNT_NO)                        AS leads,
+    COUNT(DISTINCT SUBSTR(b.CLNT_CRD_NO, 7, 9))      AS success
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
 LEFT JOIN DDWV05.CLNT_CRD_POS_LOG b
     ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
@@ -86,17 +95,19 @@ LEFT JOIN DDWV05.CLNT_CRD_POS_LOG b
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VUI'
   AND TRIM(a.TST_GRP_CD) IN ('TG4', 'TG7')
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
 
-UNION ALL
 
--- VUT — wallet_provisioning
+-- VUT — wallet_provisioning -----------------------------------------------
 SELECT
-    'VUT',
-    TO_CHAR(a.TREATMT_STRT_DT, 'YYYY-MM'),
-    TRIM(a.TST_GRP_CD),
-    COUNT(DISTINCT a.CLNT_NO),
-    COUNT(DISTINCT CASE WHEN t.TOKEN_ID IS NOT NULL THEN SUBSTR(b.CLNT_CRD_NO, 7, 9) END)
+    'VUT'                                                                                AS mnc,
+    TRIM(a.TACTIC_ID)                                                                    AS tactic_id,
+    a.TREATMT_STRT_DT                                                                    AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                                                                   AS test,
+    COUNT(DISTINCT a.CLNT_NO)                                                            AS leads,
+    COUNT(DISTINCT CASE WHEN t.TOKEN_ID IS NOT NULL THEN SUBSTR(b.CLNT_CRD_NO, 7, 9) END) AS success
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
 LEFT JOIN DDWV05.CLNT_CRD_POS_LOG b
     ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
@@ -112,17 +123,19 @@ LEFT JOIN DL_DECMAN.TOKEN_LIST t
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VUT'
   AND TRIM(a.TST_GRP_CD) IN ('TG4', 'TG7')
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
 
-UNION ALL
 
--- VAW — wallet_provisioning
+-- VAW — wallet_provisioning -----------------------------------------------
 SELECT
-    'VAW',
-    TO_CHAR(a.TREATMT_STRT_DT, 'YYYY-MM'),
-    TRIM(a.TST_GRP_CD),
-    COUNT(DISTINCT a.CLNT_NO),
-    COUNT(DISTINCT CASE WHEN t.TOKEN_ID IS NOT NULL THEN SUBSTR(b.CLNT_CRD_NO, 7, 9) END)
+    'VAW'                                                                                AS mnc,
+    TRIM(a.TACTIC_ID)                                                                    AS tactic_id,
+    a.TREATMT_STRT_DT                                                                    AS treatmt_strt_dt,
+    TRIM(a.TST_GRP_CD)                                                                   AS test,
+    COUNT(DISTINCT a.CLNT_NO)                                                            AS leads,
+    COUNT(DISTINCT CASE WHEN t.TOKEN_ID IS NOT NULL THEN SUBSTR(b.CLNT_CRD_NO, 7, 9) END) AS success
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
 LEFT JOIN DDWV05.CLNT_CRD_POS_LOG b
     ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
@@ -138,7 +151,6 @@ LEFT JOIN DL_DECMAN.TOKEN_LIST t
 WHERE substr(a.TACTIC_ID, 8, 3) = 'VAW'
   AND TRIM(a.TST_GRP_CD) IN ('TG4', 'TG7')
   AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-GROUP BY 1, 2, 3
-
-ORDER BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
 ;
