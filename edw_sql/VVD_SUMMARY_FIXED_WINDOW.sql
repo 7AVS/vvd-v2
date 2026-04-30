@@ -213,3 +213,88 @@ WHERE substr(a.TACTIC_ID, 8, 3) = 'IRI'
 GROUP BY 1, 2, 3, 4
 ORDER BY 2, 3, 4
 ;
+
+
+-- =============================================================================
+-- PRIMARY versions for VUT / VAW: first provisioning per client only
+-- Inner subquery collapses to one row per (tactic, client) with their
+-- earliest qualifying provisioning date (or NULL if none). Outer query
+-- counts that first-provisioning event into the 30/60/90 buckets.
+-- A client with N cards provisioned in the window contributes 1 (or 0).
+-- =============================================================================
+
+
+-- VUT — first provisioning per client (PRIMARY) ---------------------------
+SELECT
+    'VUT_FIRST'                            AS mnc,
+    x.tactic_id,
+    x.treatmt_strt_dt,
+    x.test,
+    COUNT(*)                                                                       AS leads,
+    SUM(CASE WHEN x.first_succ_dt <= x.treatmt_strt_dt + 29 THEN 1 ELSE 0 END)     AS success_30d,
+    SUM(CASE WHEN x.first_succ_dt <= x.treatmt_strt_dt + 59 THEN 1 ELSE 0 END)     AS success_60d,
+    SUM(CASE WHEN x.first_succ_dt IS NOT NULL              THEN 1 ELSE 0 END)     AS success_90d
+FROM (
+    SELECT
+        TRIM(a.TACTIC_ID)                                       AS tactic_id,
+        a.TREATMT_STRT_DT                                       AS treatmt_strt_dt,
+        TRIM(a.TST_GRP_CD)                                      AS test,
+        a.CLNT_NO,
+        MIN(CASE WHEN t.TOKEN_ID IS NOT NULL THEN b.TXN_DT END) AS first_succ_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    LEFT JOIN DDWV05.CLNT_CRD_POS_LOG b
+        ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
+        AND b.SRVC_CD = 36
+        AND b.AMT1 = 0
+        AND (b.VISA_DR_CRD_NO LIKE '45190%' OR b.VISA_DR_CRD_NO LIKE '45199%')
+        AND b.POS_ENTR_MODE_CD_NON_EMV = '000'
+        AND b.APPROVAL_CODE IS NOT NULL
+        AND b.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    LEFT JOIN DL_DECMAN.TOKEN_LIST t
+        ON b.TOKN_REQSTR_ID = t.TOKEN_ID
+        AND t.TOKEN_WALLET_IND = 'Y'
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VUT'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY 1, 2, 3, a.CLNT_NO
+) x
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
+
+
+-- VAW — first provisioning per client (PRIMARY) ---------------------------
+SELECT
+    'VAW_FIRST'                            AS mnc,
+    x.tactic_id,
+    x.treatmt_strt_dt,
+    x.test,
+    COUNT(*)                                                                       AS leads,
+    SUM(CASE WHEN x.first_succ_dt <= x.treatmt_strt_dt + 29 THEN 1 ELSE 0 END)     AS success_30d,
+    SUM(CASE WHEN x.first_succ_dt <= x.treatmt_strt_dt + 59 THEN 1 ELSE 0 END)     AS success_60d,
+    SUM(CASE WHEN x.first_succ_dt IS NOT NULL              THEN 1 ELSE 0 END)     AS success_90d
+FROM (
+    SELECT
+        TRIM(a.TACTIC_ID)                                       AS tactic_id,
+        a.TREATMT_STRT_DT                                       AS treatmt_strt_dt,
+        TRIM(a.TST_GRP_CD)                                      AS test,
+        a.CLNT_NO,
+        MIN(CASE WHEN t.TOKEN_ID IS NOT NULL THEN b.TXN_DT END) AS first_succ_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    LEFT JOIN DDWV05.CLNT_CRD_POS_LOG b
+        ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
+        AND b.SRVC_CD = 36
+        AND b.AMT1 = 0
+        AND (b.VISA_DR_CRD_NO LIKE '45190%' OR b.VISA_DR_CRD_NO LIKE '45199%')
+        AND b.POS_ENTR_MODE_CD_NON_EMV = '000'
+        AND b.APPROVAL_CODE IS NOT NULL
+        AND b.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    LEFT JOIN DL_DECMAN.TOKEN_LIST t
+        ON b.TOKN_REQSTR_ID = t.TOKEN_ID
+        AND t.TOKEN_WALLET_IND = 'Y'
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VAW'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY 1, 2, 3, a.CLNT_NO
+) x
+GROUP BY 1, 2, 3, 4
+ORDER BY 2, 3, 4
+;
