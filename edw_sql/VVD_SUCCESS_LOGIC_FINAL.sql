@@ -27,26 +27,27 @@
 
 
 -- VUT — final success logic ----------------------------------------------
+-- Window: 90d (one-time batch).
+-- Primary:   client provisioned card to wallet (zero-dollar auth, CLNT_CRD_POS_LOG)
+-- Secondary: client used the card for a purchase (settled, PT_OF_SALE_TXN)
 SELECT
     TRIM(t.TACTIC_ID)                                                                                                        AS tactic_id,
     t.TREATMT_STRT_DT                                                                                                        AS treatmt_strt_dt,
     TRIM(t.TST_GRP_CD)                                                                                                       AS test,
     COUNT(DISTINCT t.CLNT_NO)                                                                                                AS leads,
-    COUNT(DISTINCT CASE WHEN combos.combo_first_auth <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                           AS primary_30d,
-    SUM(CASE WHEN combos.combo_first_auth <= t.TREATMT_STRT_DT + 29 THEN 1 ELSE 0 END)                                       AS secondary_30d,
-    COUNT(DISTINCT CASE WHEN combos.combo_first_auth <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                           AS primary_60d,
-    SUM(CASE WHEN combos.combo_first_auth <= t.TREATMT_STRT_DT + 59 THEN 1 ELSE 0 END)                                       AS secondary_60d,
-    COUNT(DISTINCT CASE WHEN combos.combo_first_auth IS NOT NULL              THEN t.CLNT_NO END)                           AS primary_90d,
-    SUM(CASE WHEN combos.combo_first_auth IS NOT NULL              THEN 1 ELSE 0 END)                                        AS secondary_90d
+    COUNT(DISTINCT CASE WHEN prim.first_prov_dt <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                                AS primary_30d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt   <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                                AS secondary_30d,
+    COUNT(DISTINCT CASE WHEN prim.first_prov_dt <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                                AS primary_60d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt   <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                                AS secondary_60d,
+    COUNT(DISTINCT CASE WHEN prim.first_prov_dt IS NOT NULL              THEN t.CLNT_NO END)                                 AS primary_90d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt   IS NOT NULL              THEN t.CLNT_NO END)                                 AS secondary_90d
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST t
 LEFT JOIN (
     SELECT
         a.CLNT_NO,
         a.TACTIC_ID,
         a.TREATMT_STRT_DT,
-        b.VISA_DR_CRD_NO,
-        b.TOKN_REQSTR_ID,
-        MIN(b.TXN_DT) AS combo_first_auth
+        MIN(b.TXN_DT) AS first_prov_dt
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
     INNER JOIN DDWV05.CLNT_CRD_POS_LOG b
         ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
@@ -61,12 +62,35 @@ LEFT JOIN (
         AND tk.TOKEN_WALLET_IND = 'Y'
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VUT'
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT,
-             b.VISA_DR_CRD_NO, b.TOKN_REQSTR_ID
-) combos
-    ON  t.CLNT_NO         = combos.CLNT_NO
-    AND t.TACTIC_ID       = combos.TACTIC_ID
-    AND t.TREATMT_STRT_DT = combos.TREATMT_STRT_DT
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) prim
+    ON  t.CLNT_NO         = prim.CLNT_NO
+    AND t.TACTIC_ID       = prim.TACTIC_ID
+    AND t.TREATMT_STRT_DT = prim.TREATMT_STRT_DT
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(c.TXN_DT) AS first_txn_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
+        ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
+        AND c.SRVC_CD = 36
+        AND c.MSG_TP = '0220'
+        AND c.AMT1 > 0
+        AND (
+                 (c.TXN_TP IN ('10','13') AND c.RCNCL_REAS_CD IN ('M','S'))
+              OR (c.TXN_TP = '22'         AND c.RCNCL_REAS_CD IN ('P','E'))
+            )
+        AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VUT'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) sec
+    ON  t.CLNT_NO         = sec.CLNT_NO
+    AND t.TACTIC_ID       = sec.TACTIC_ID
+    AND t.TREATMT_STRT_DT = sec.TREATMT_STRT_DT
 WHERE substr(t.TACTIC_ID, 8, 3) = 'VUT'
   AND t.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 GROUP BY 1, 2, 3
@@ -76,22 +100,22 @@ ORDER BY 1, 2, 3
 
 -- VAW — final success logic ----------------------------------------------
 -- Window: 30d (monthly in-app campaign).
+-- Primary:   client provisioned card to wallet (zero-dollar auth, CLNT_CRD_POS_LOG)
+-- Secondary: client used the card for a purchase (settled, PT_OF_SALE_TXN)
 SELECT
     TRIM(t.TACTIC_ID)                                                                                                        AS tactic_id,
     t.TREATMT_STRT_DT                                                                                                        AS treatmt_strt_dt,
     TRIM(t.TST_GRP_CD)                                                                                                       AS test,
     COUNT(DISTINCT t.CLNT_NO)                                                                                                AS leads,
-    COUNT(DISTINCT CASE WHEN combos.combo_first_auth IS NOT NULL THEN t.CLNT_NO END)                                         AS primary_30d,
-    SUM(CASE WHEN combos.combo_first_auth IS NOT NULL THEN 1 ELSE 0 END)                                                     AS secondary_30d
+    COUNT(DISTINCT CASE WHEN prim.first_prov_dt IS NOT NULL THEN t.CLNT_NO END)                                              AS primary_30d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt   IS NOT NULL THEN t.CLNT_NO END)                                              AS secondary_30d
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST t
 LEFT JOIN (
     SELECT
         a.CLNT_NO,
         a.TACTIC_ID,
         a.TREATMT_STRT_DT,
-        b.VISA_DR_CRD_NO,
-        b.TOKN_REQSTR_ID,
-        MIN(b.TXN_DT) AS combo_first_auth
+        MIN(b.TXN_DT) AS first_prov_dt
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
     INNER JOIN DDWV05.CLNT_CRD_POS_LOG b
         ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
@@ -106,12 +130,35 @@ LEFT JOIN (
         AND tk.TOKEN_WALLET_IND = 'Y'
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VAW'
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
-    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT,
-             b.VISA_DR_CRD_NO, b.TOKN_REQSTR_ID
-) combos
-    ON  t.CLNT_NO         = combos.CLNT_NO
-    AND t.TACTIC_ID       = combos.TACTIC_ID
-    AND t.TREATMT_STRT_DT = combos.TREATMT_STRT_DT
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) prim
+    ON  t.CLNT_NO         = prim.CLNT_NO
+    AND t.TACTIC_ID       = prim.TACTIC_ID
+    AND t.TREATMT_STRT_DT = prim.TREATMT_STRT_DT
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(c.TXN_DT) AS first_txn_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
+        ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
+        AND c.SRVC_CD = 36
+        AND c.MSG_TP = '0220'
+        AND c.AMT1 > 0
+        AND (
+                 (c.TXN_TP IN ('10','13') AND c.RCNCL_REAS_CD IN ('M','S'))
+              OR (c.TXN_TP = '22'         AND c.RCNCL_REAS_CD IN ('P','E'))
+            )
+        AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 29)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VAW'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) sec
+    ON  t.CLNT_NO         = sec.CLNT_NO
+    AND t.TACTIC_ID       = sec.TACTIC_ID
+    AND t.TREATMT_STRT_DT = sec.TREATMT_STRT_DT
 WHERE substr(t.TACTIC_ID, 8, 3) = 'VAW'
   AND t.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
 GROUP BY 1, 2, 3
