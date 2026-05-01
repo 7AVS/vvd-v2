@@ -175,3 +175,143 @@ WHERE substr(t.TACTIC_ID, 8, 3) = 'VUI'
 GROUP BY 1, 2, 3
 ORDER BY 1, 2, 3
 ;
+
+
+-- =============================================================================
+-- VCN / VDA — final acquisition success logic
+--
+-- Primary:   client got a NEW VVD card ISSUED during the campaign window
+--            (DDWV01.VISA_DR_CRD_DLY, ISS_DT in [STRT, STRT+89])
+--            Note: ISS_DT, NOT ACTV_DT. Activation is the VDT campaign metric.
+-- Secondary: client used the card (purchase) during the campaign window.
+--            Borrows the locked VUI usage logic verbatim:
+--            DDWV01.PT_OF_SALE_TXN, AMT1 > 0, TXN_TP IN ('10','13'), SRVC_CD=36
+--
+-- Same measurement logic for VCN and VDA (both acquisition campaigns).
+-- Only the TACTIC_ID prefix differs.
+--
+-- Output: tactic_id | treatmt_strt_dt | test | leads
+--         | primary_30d   | secondary_30d
+--         | primary_60d   | secondary_60d
+--         | primary_90d   | secondary_90d
+-- =============================================================================
+
+
+-- VCN — final acquisition success ----------------------------------------
+SELECT
+    TRIM(t.TACTIC_ID)                                                                                                AS tactic_id,
+    t.TREATMT_STRT_DT                                                                                                AS treatmt_strt_dt,
+    TRIM(t.TST_GRP_CD)                                                                                               AS test,
+    COUNT(DISTINCT t.CLNT_NO)                                                                                        AS leads,
+    COUNT(DISTINCT CASE WHEN prim.first_iss_dt <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                         AS primary_30d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt  <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                         AS secondary_30d,
+    COUNT(DISTINCT CASE WHEN prim.first_iss_dt <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                         AS primary_60d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt  <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                         AS secondary_60d,
+    COUNT(DISTINCT CASE WHEN prim.first_iss_dt IS NOT NULL              THEN t.CLNT_NO END)                          AS primary_90d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt  IS NOT NULL              THEN t.CLNT_NO END)                          AS secondary_90d
+FROM DG6V01.TACTIC_EVNT_IP_AR_HIST t
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(card.ISS_DT) AS first_iss_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.VISA_DR_CRD_DLY card
+        ON a.CLNT_NO = card.CLNT_NO
+        AND card.STS_CD IN ('06', '08')
+        AND card.SRVC_ID = 36
+        AND card.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DLY)
+        AND card.ISS_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VCN'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) prim
+    ON  t.CLNT_NO         = prim.CLNT_NO
+    AND t.TACTIC_ID       = prim.TACTIC_ID
+    AND t.TREATMT_STRT_DT = prim.TREATMT_STRT_DT
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(c.TXN_DT) AS first_txn_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
+        ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
+        AND c.SRVC_CD = 36
+        AND c.AMT1 > 0
+        AND c.TXN_TP IN ('10', '13')
+        AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VCN'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) sec
+    ON  t.CLNT_NO         = sec.CLNT_NO
+    AND t.TACTIC_ID       = sec.TACTIC_ID
+    AND t.TREATMT_STRT_DT = sec.TREATMT_STRT_DT
+WHERE substr(t.TACTIC_ID, 8, 3) = 'VCN'
+  AND t.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3
+;
+
+
+-- VDA — final acquisition success ----------------------------------------
+SELECT
+    TRIM(t.TACTIC_ID)                                                                                                AS tactic_id,
+    t.TREATMT_STRT_DT                                                                                                AS treatmt_strt_dt,
+    TRIM(t.TST_GRP_CD)                                                                                               AS test,
+    COUNT(DISTINCT t.CLNT_NO)                                                                                        AS leads,
+    COUNT(DISTINCT CASE WHEN prim.first_iss_dt <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                         AS primary_30d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt  <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                         AS secondary_30d,
+    COUNT(DISTINCT CASE WHEN prim.first_iss_dt <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                         AS primary_60d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt  <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                         AS secondary_60d,
+    COUNT(DISTINCT CASE WHEN prim.first_iss_dt IS NOT NULL              THEN t.CLNT_NO END)                          AS primary_90d,
+    COUNT(DISTINCT CASE WHEN sec.first_txn_dt  IS NOT NULL              THEN t.CLNT_NO END)                          AS secondary_90d
+FROM DG6V01.TACTIC_EVNT_IP_AR_HIST t
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(card.ISS_DT) AS first_iss_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.VISA_DR_CRD_DLY card
+        ON a.CLNT_NO = card.CLNT_NO
+        AND card.STS_CD IN ('06', '08')
+        AND card.SRVC_ID = 36
+        AND card.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DLY)
+        AND card.ISS_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VDA'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) prim
+    ON  t.CLNT_NO         = prim.CLNT_NO
+    AND t.TACTIC_ID       = prim.TACTIC_ID
+    AND t.TREATMT_STRT_DT = prim.TREATMT_STRT_DT
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(c.TXN_DT) AS first_txn_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
+        ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
+        AND c.SRVC_CD = 36
+        AND c.AMT1 > 0
+        AND c.TXN_TP IN ('10', '13')
+        AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VDA'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) sec
+    ON  t.CLNT_NO         = sec.CLNT_NO
+    AND t.TACTIC_ID       = sec.TACTIC_ID
+    AND t.TREATMT_STRT_DT = sec.TREATMT_STRT_DT
+WHERE substr(t.TACTIC_ID, 8, 3) = 'VDA'
+  AND t.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3
+;
