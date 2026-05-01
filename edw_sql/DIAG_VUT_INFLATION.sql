@@ -189,3 +189,74 @@ FROM (
 GROUP BY 1, 2, 3
 ORDER BY 1, 2, 3
 ;
+
+
+-- =============================================================================
+-- DIAGNOSIS SUMMARY — what we found, before/after logic, and what NOT to chase
+-- =============================================================================
+--
+-- 1. TOKEN_LIST is a lookup, not a per-client/per-token table.
+--    -> 4 columns only: TOKEN_ID, TOKEN_SOURCE, TOKEN_WALLET_IND, TOKEN_NAME.
+--    -> Only 13 rows have WALLET_IND='Y'.
+--    -> TOKEN_ID identifies the WALLET PROVIDER TYPE (e.g. 40010075001 = GOOGLE PAY).
+--       It is shared across every client/card using that wallet. It does NOT
+--       identify a unique provisioning event.
+--    -> No first-provision date column exists. Provisioning is identified
+--       structurally via MIN(TXN_DT) per (card, wallet).
+--
+-- 2. Why secondary_Nd was inflated ~6x in VVD_SUMMARY_FIXED_WINDOW.sql.
+--    -> Wallet tokens, once provisioned, generate recurring zero-dollar
+--       keep-alive auths in CLNT_CRD_POS_LOG. Same filter set
+--       (AMT1=0, SRVC_CD=36, POS_ENTR_MODE='000', WALLET_IND='Y') matches
+--       both the initial provisioning auth AND the recurring auths.
+--    -> Old SUM(rows) counted every keep-alive as a separate "provisioning".
+--    -> Confirmed in Q2 raw output: client 118107598 had 30+ rows on the
+--       SAME (card, wallet) pair, all keep-alives.
+--
+-- 3. Card-anomaly note (parked, do NOT chase further).
+--    -> In tactic 2024232VUT, client 118107598 shows a second VISA_DR_CRD_NO
+--       (4519912131874879) with first_auth_dt = 2024-11-09, count = 1.
+--    -> This could be any of: card reissue/renewal, client moved to new
+--       device, new wallet app, dormant card reactivated. We cannot
+--       distinguish these from POS_LOG alone.
+--    -> Per the "curated client list" assumption, we treat any first auth
+--       inside the campaign window as campaign-attributable. We are NOT
+--       trying to filter out "client already had it" cases. Don't go here.
+--
+-- 4. Before/after logic comparison for VUT and VAW.
+--    BEFORE (current VVD_SUMMARY_FIXED_WINDOW.sql, sections "VUT" / "VAW"):
+--       primary_Nd   = clients whose MIN(TXN_DT) in [STRT, STRT+89] falls in
+--                      [STRT, STRT+N-1].   <-- behaviorally OK, keep it.
+--       secondary_Nd = SUM(rows that pass filter, with TXN_DT <= STRT+N-1).
+--                      <-- INFLATED by recurring keep-alive auths.
+--
+--    AFTER (proposed, validated in Q7 above):
+--       primary_Nd   = unchanged. distinct clients with first auth in window.
+--       secondary_Nd = COUNT distinct (CLNT_CRD_NO, TOKN_REQSTR_ID) pairs
+--                      whose first_auth_dt is in [STRT, STRT+N-1].
+--                      i.e. one count per unique card-in-wallet provisioning.
+--                      A client with 1 card in 2 wallets = 2.
+--                      A client with 1 card in 1 wallet (regardless of how
+--                      many keep-alive auths) = 1.
+--
+--    Validation (Q7, tactic 2025160VUT):
+--       TG4 90d: distinct_clients=106,966 ; card_wallets=112,363 ; ratio 1.05x
+--       TG7 90d: distinct_clients=  5,628 ; card_wallets=  5,893 ; ratio 1.05x
+--    1.05x is the realistic small fraction of clients with multiple wallets.
+--    Compare to old secondary which gave ~6x.
+--
+-- 5. Low-hanging fruit (do these).
+--    a) Replace secondary_Nd in VVD_SUMMARY_FIXED_WINDOW.sql VUT and VAW
+--       sections with the (CLNT_CRD_NO, TOKN_REQSTR_ID) dedup logic from Q7.
+--    b) Optionally add TOKEN_NAME to a wallet-breakdown query (Apple Pay
+--       vs Google Pay vs other) — same pipeline, just expose the field.
+--
+-- 6. Rabbit holes to AVOID for now.
+--    -> Trying to detect "client was already tokenized pre-campaign" via
+--       a wider lookback. Curation list handles this assumption.
+--    -> Trying to distinguish initial-provisioning auth vs keep-alive
+--       auth from POS_LOG fields alone. No discriminator exists. The
+--       (card, wallet, first_auth) collapse is the practical answer.
+--    -> Trying to attribute the second VISA_DR_CRD_NO to renewal vs
+--       device change vs new wallet. Not knowable from this data.
+-- =============================================================================
