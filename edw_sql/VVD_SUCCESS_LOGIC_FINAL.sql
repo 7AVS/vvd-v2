@@ -160,8 +160,12 @@ LEFT JOIN (
     INNER JOIN DDWV01.PT_OF_SALE_TXN c
         ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
         AND c.SRVC_CD = 36
+        AND c.MSG_TP = '0220'
         AND c.AMT1 > 0
-        AND c.TXN_TP IN ('10', '13')
+        AND (
+                 (c.TXN_TP IN ('10','13') AND c.RCNCL_REAS_CD IN ('M','S'))
+              OR (c.TXN_TP = '22'         AND c.RCNCL_REAS_CD IN ('P','E'))
+            )
         AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VUI'
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
@@ -240,8 +244,12 @@ LEFT JOIN (
     INNER JOIN DDWV01.PT_OF_SALE_TXN c
         ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
         AND c.SRVC_CD = 36
+        AND c.MSG_TP = '0220'
         AND c.AMT1 > 0
-        AND c.TXN_TP IN ('10', '13')
+        AND (
+                 (c.TXN_TP IN ('10','13') AND c.RCNCL_REAS_CD IN ('M','S'))
+              OR (c.TXN_TP = '22'         AND c.RCNCL_REAS_CD IN ('P','E'))
+            )
         AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VCN'
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
@@ -300,8 +308,12 @@ LEFT JOIN (
     INNER JOIN DDWV01.PT_OF_SALE_TXN c
         ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
         AND c.SRVC_CD = 36
+        AND c.MSG_TP = '0220'
         AND c.AMT1 > 0
-        AND c.TXN_TP IN ('10', '13')
+        AND (
+                 (c.TXN_TP IN ('10','13') AND c.RCNCL_REAS_CD IN ('M','S'))
+              OR (c.TXN_TP = '22'         AND c.RCNCL_REAS_CD IN ('P','E'))
+            )
         AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
     WHERE substr(a.TACTIC_ID, 8, 3) = 'VDA'
       AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
