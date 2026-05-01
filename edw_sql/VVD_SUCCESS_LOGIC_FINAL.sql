@@ -126,7 +126,7 @@ ORDER BY 1, 2, 3
 -- VUI — final usage success logic (no secondary; usage campaigns have only
 -- a single primary indicator)
 --
--- Source table:   DDWV05.PT_OF_SALE_TXN  (matches SAS)
+-- Source table:   DDWV01.PT_OF_SALE_TXN  (matches SAS)
 -- Filters:        SRVC_CD = 36, AMT1 > 0, TXN_TP IN ('10','13') (purchases)
 -- Window:         [STRT, STRT+89]
 --
@@ -157,7 +157,7 @@ LEFT JOIN (
         a.TREATMT_STRT_DT,
         MIN(c.TXN_DT) AS first_txn_dt
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
-    INNER JOIN DDWV05.PT_OF_SALE_TXN c
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
         ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
         AND c.SRVC_CD = 36
         AND c.AMT1 > 0

@@ -12,7 +12,7 @@
 -- Query 1 — schema for PT_OF_SALE_TXN -------------------------------------
 SELECT 'PT_OF_SALE_TXN' AS table_name, ColumnName, ColumnType, ColumnLength, Nullable
 FROM DBC.COLUMNS
-WHERE DatabaseName = 'DDWV05'
+WHERE DatabaseName = 'DDWV01'
   AND TableName    = 'PT_OF_SALE_TXN'
 ORDER BY ColumnId
 ;
@@ -57,7 +57,7 @@ LEFT JOIN (
         a.TREATMT_STRT_DT         AS treatmt_strt_dt,
         COUNT(DISTINCT a.CLNT_NO) AS sas_success
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
-    INNER JOIN DDWV05.PT_OF_SALE_TXN c
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
         ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
         AND c.SRVC_CD = 36
         AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
@@ -74,7 +74,7 @@ LEFT JOIN (
         a.TREATMT_STRT_DT         AS treatmt_strt_dt,
         COUNT(DISTINCT a.CLNT_NO) AS hybrid_success
     FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
-    INNER JOIN DDWV05.PT_OF_SALE_TXN c
+    INNER JOIN DDWV01.PT_OF_SALE_TXN c
         ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
         AND c.SRVC_CD = 36
         AND c.AMT1 > 0
@@ -137,7 +137,7 @@ SELECT
     c.SRVC_CD,
     c.TXN_TP
 FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
-INNER JOIN DDWV05.PT_OF_SALE_TXN c
+INNER JOIN DDWV01.PT_OF_SALE_TXN c
     ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
     AND c.SRVC_CD = 36
     AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
