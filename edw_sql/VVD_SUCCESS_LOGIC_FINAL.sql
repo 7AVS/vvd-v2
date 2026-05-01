@@ -120,3 +120,58 @@ WHERE substr(t.TACTIC_ID, 8, 3) = 'VAW'
 GROUP BY 1, 2, 3
 ORDER BY 1, 2, 3
 ;
+
+
+-- =============================================================================
+-- VUI — final usage success logic (no secondary; usage campaigns have only
+-- a single primary indicator)
+--
+-- Source table:   DDWV05.PT_OF_SALE_TXN  (matches SAS)
+-- Filters:        SRVC_CD = 36, AMT1 > 0, TXN_TP IN ('10','13') (purchases)
+-- Window:         [STRT, STRT+89]
+--
+-- Inner subquery: per (tactic, client), MIN(TXN_DT) of qualifying purchase
+-- Outer aggregate: tactic x test
+--   leads        = distinct CLNT_NO
+--   primary_Nd   = distinct CLNT_NO whose first qualifying purchase is in
+--                  [STRT, STRT+N-1]
+--
+-- VUI has no secondary metric. The "usage" measurement that secondary on
+-- VCN/VDA will eventually borrow is this same primary logic.
+-- =============================================================================
+
+-- VUI — final usage success logic ----------------------------------------
+SELECT
+    TRIM(t.TACTIC_ID)                                                                                           AS tactic_id,
+    t.TREATMT_STRT_DT                                                                                           AS treatmt_strt_dt,
+    TRIM(t.TST_GRP_CD)                                                                                          AS test,
+    COUNT(DISTINCT t.CLNT_NO)                                                                                   AS leads,
+    COUNT(DISTINCT CASE WHEN c.first_txn_dt <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                       AS primary_30d,
+    COUNT(DISTINCT CASE WHEN c.first_txn_dt <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                       AS primary_60d,
+    COUNT(DISTINCT CASE WHEN c.first_txn_dt IS NOT NULL              THEN t.CLNT_NO END)                       AS primary_90d
+FROM DG6V01.TACTIC_EVNT_IP_AR_HIST t
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(c.TXN_DT) AS first_txn_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV05.PT_OF_SALE_TXN c
+        ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
+        AND c.SRVC_CD = 36
+        AND c.AMT1 > 0
+        AND c.TXN_TP IN ('10', '13')
+        AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VUI'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) c
+    ON  t.CLNT_NO         = c.CLNT_NO
+    AND t.TACTIC_ID       = c.TACTIC_ID
+    AND t.TREATMT_STRT_DT = c.TREATMT_STRT_DT
+WHERE substr(t.TACTIC_ID, 8, 3) = 'VUI'
+  AND t.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3
+;
