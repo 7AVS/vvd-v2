@@ -327,3 +327,67 @@ WHERE substr(t.TACTIC_ID, 8, 3) = 'VDA'
 GROUP BY 1, 2, 3
 ORDER BY 1, 2, 3
 ;
+
+
+-- =============================================================================
+-- VDT — final activation success logic
+--
+-- Primary:   client activated their (issued, previously inactive) VVD card
+--            during the campaign window
+--            (DDWV01.VISA_DR_CRD_DLY, ACTV_DT in [STRT, STRT+89])
+--            ACTV_DT is correct for VDT (campaign IS about activation).
+--            VCN/VDA use ISS_DT instead because they measure acquisition.
+-- Secondary: none. VDT is single-indicator. The dashboard SAS likely has a
+--            secondary (per the `SUCCESS_IND_1` naming convention seen in
+--            the photographed portion of VDT_activation.sas) but the
+--            corresponding sections are not yet photographed.
+--
+-- Brand filter (`VISA_DR_CRD_BRND_CD = '01'`) used by the dashboard SAS is
+-- NOT applied here. The VDT tactic list is pre-filtered to clients with
+-- inactive cards needing activation; the brand restriction is redundant.
+-- The field's value mapping is also not authoritatively verified in either
+-- the Vintage pipeline (`add_card_type` flag is dead config across
+-- vintage_engine v2.3-v2.7) or the EDW data dictionary.
+-- See success_logic_validation.md §9.6 for full reasoning.
+--
+-- Output: tactic_id | treatmt_strt_dt | test | leads
+--         | primary_30d | primary_60d | primary_90d
+-- =============================================================================
+
+
+-- VDT — final activation success -----------------------------------------
+SELECT
+    TRIM(t.TACTIC_ID)                                                                                                AS tactic_id,
+    t.TREATMT_STRT_DT                                                                                                AS treatmt_strt_dt,
+    TRIM(t.TST_GRP_CD)                                                                                               AS test,
+    COUNT(DISTINCT t.CLNT_NO)                                                                                        AS leads,
+    COUNT(DISTINCT CASE WHEN prim.first_actv_dt <= t.TREATMT_STRT_DT + 29 THEN t.CLNT_NO END)                        AS primary_30d,
+    COUNT(DISTINCT CASE WHEN prim.first_actv_dt <= t.TREATMT_STRT_DT + 59 THEN t.CLNT_NO END)                        AS primary_60d,
+    COUNT(DISTINCT CASE WHEN prim.first_actv_dt IS NOT NULL              THEN t.CLNT_NO END)                         AS primary_90d
+FROM DG6V01.TACTIC_EVNT_IP_AR_HIST t
+LEFT JOIN (
+    SELECT
+        a.CLNT_NO,
+        a.TACTIC_ID,
+        a.TREATMT_STRT_DT,
+        MIN(card.ACTV_DT) AS first_actv_dt
+    FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+    INNER JOIN DDWV01.VISA_DR_CRD_DLY card
+        ON a.CLNT_NO = card.CLNT_NO
+        AND card.STS_CD IN ('06', '08')
+        AND card.SRVC_ID = 36
+        AND card.ACTV_DT IS NOT NULL
+        AND card.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DLY)
+        AND card.ACTV_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+    WHERE substr(a.TACTIC_ID, 8, 3) = 'VDT'
+      AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+    GROUP BY a.CLNT_NO, a.TACTIC_ID, a.TREATMT_STRT_DT
+) prim
+    ON  t.CLNT_NO         = prim.CLNT_NO
+    AND t.TACTIC_ID       = prim.TACTIC_ID
+    AND t.TREATMT_STRT_DT = prim.TREATMT_STRT_DT
+WHERE substr(t.TACTIC_ID, 8, 3) = 'VDT'
+  AND t.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3
+;
