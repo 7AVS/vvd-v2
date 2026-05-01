@@ -173,3 +173,84 @@ ORDER BY b.TXN_DT
 --   Different rows -> investigate. Note in particular whether
 --   CLNT_CRD_POS_LOG carries auth pings / non-purchase txn types that
 --   PT_OF_SALE_TXN strips out.
+
+
+-- =============================================================================
+-- TXN_TP / MSG_TP exploration — is the (10,13) purchase filter too narrow?
+-- Goal: see every distinct (TXN_TP, MSG_TP) combination present in
+-- PT_OF_SALE_TXN for VUI tactic clients in the campaign window. Identify
+-- which codes look like real card usage (subscriptions, recurring, CNP,
+-- online) vs noise (auths, reversals, voids, declines).
+-- =============================================================================
+
+
+-- Query 7 — TXN_TP / MSG_TP distribution in PT_OF_SALE_TXN ----------------
+-- Shows distinct (TXN_TP, MSG_TP) pairs with row count, client coverage,
+-- amount stats, and zero-vs-positive amount split.
+SELECT
+    c.TXN_TP,
+    c.MSG_TP,
+    COUNT(*)                                              AS row_count,
+    COUNT(DISTINCT SUBSTR(c.CLNT_CRD_NO, 7, 9))           AS distinct_clients,
+    SUM(CASE WHEN c.AMT1 = 0 THEN 1 ELSE 0 END)           AS zero_amt_rows,
+    SUM(CASE WHEN c.AMT1 > 0 THEN 1 ELSE 0 END)           AS pos_amt_rows,
+    MIN(c.AMT1)                                           AS min_amt,
+    AVG(c.AMT1)                                           AS avg_amt,
+    MAX(c.AMT1)                                           AS max_amt
+FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+INNER JOIN DDWV01.PT_OF_SALE_TXN c
+    ON a.CLNT_NO = SUBSTR(c.CLNT_CRD_NO, 7, 9)
+    AND c.SRVC_CD = 36
+    AND c.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+WHERE substr(a.TACTIC_ID, 8, 3) = 'VUI'
+  AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY c.TXN_TP, c.MSG_TP
+ORDER BY row_count DESC
+;
+
+-- Interpretation guide (typical Visa POS codes; verify against your data):
+--   TXN_TP 10 = purchase, card-present
+--   TXN_TP 13 = ???  (may be online / refund / specific subset)
+--   TXN_TP 11 = cash advance
+--   TXN_TP 20-22 = reversal / void
+--   MSG_TP '0200' / '0210' = authorization request / response
+--   MSG_TP '0220' / '0230' = financial completion / response
+-- Look for high-row, high-distinct-client codes with positive amounts ->
+-- candidates for inclusion in the "real usage" filter.
+
+
+-- Query 8 — same exploration on CLNT_CRD_POS_LOG --------------------------
+-- For comparison: do these tables expose the same TXN_TP universe?
+SELECT
+    b.txn_tp,
+    b.msg_tp,
+    COUNT(*)                                              AS row_count,
+    COUNT(DISTINCT SUBSTR(b.CLNT_CRD_NO, 7, 9))           AS distinct_clients,
+    SUM(CASE WHEN b.AMT1 = 0 THEN 1 ELSE 0 END)           AS zero_amt_rows,
+    SUM(CASE WHEN b.AMT1 > 0 THEN 1 ELSE 0 END)           AS pos_amt_rows
+FROM DG6V01.TACTIC_EVNT_IP_AR_HIST a
+INNER JOIN DDWV05.CLNT_CRD_POS_LOG b
+    ON a.CLNT_NO = SUBSTR(b.CLNT_CRD_NO, 7, 9)
+    AND b.SRVC_CD = 36
+    AND b.TXN_DT BETWEEN a.TREATMT_STRT_DT AND (a.TREATMT_STRT_DT + 89)
+WHERE substr(a.TACTIC_ID, 8, 3) = 'VUI'
+  AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
+GROUP BY b.txn_tp, b.msg_tp
+ORDER BY row_count DESC
+;
+
+
+-- Query 9 — sample one row per (TXN_TP, MSG_TP) for human inspection ------
+-- Useful for eyeballing what each code actually represents in your data.
+SELECT
+    c.TXN_TP,
+    c.MSG_TP,
+    c.CLNT_CRD_NO,
+    c.TXN_DT,
+    c.AMT1,
+    c.SRVC_CD
+FROM DDWV01.PT_OF_SALE_TXN c
+WHERE c.SRVC_CD = 36
+  AND c.TXN_DT BETWEEN DATE '2026-01-01' AND DATE '2026-01-31'
+QUALIFY ROW_NUMBER() OVER (PARTITION BY c.TXN_TP, c.MSG_TP ORDER BY c.TXN_DT) = 1
+;
