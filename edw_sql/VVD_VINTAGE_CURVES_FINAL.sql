@@ -82,7 +82,7 @@ LEFT JOIN daily_success s
     ON s.cohort      = l.cohort
    AND s.tst_grp_cd  = l.tst_grp_cd
    AND s.vintage_day = ds.day_num
-ORDER BY COHORT, TST_GRP_CD, VINTAGE_DAY
+ORDER BY 3, 4, 5
 ;
 
 
@@ -129,7 +129,7 @@ daily_success AS (
           AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
         GROUP BY a.CLNT_NO, a.TST_GRP_CD, a.TREATMT_STRT_DT
     ) s
-    GROUP BY 2, 3, 4
+    GROUP BY 1, 2, 3, 4
     UNION ALL
     SELECT
         'SECONDARY_USAGE'                      AS metric,
@@ -156,7 +156,7 @@ daily_success AS (
           AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
         GROUP BY a.CLNT_NO, a.TST_GRP_CD, a.TREATMT_STRT_DT
     ) s
-    GROUP BY 2, 3, 4
+    GROUP BY 1, 2, 3, 4
 )
 SELECT
     'VDA'        AS MNE,
@@ -178,7 +178,7 @@ LEFT JOIN daily_success s
    AND s.cohort      = l.cohort
    AND s.tst_grp_cd  = l.tst_grp_cd
    AND s.vintage_day = ds.day_num
-ORDER BY METRIC, COHORT, TST_GRP_CD, VINTAGE_DAY
+ORDER BY 2, 3, 4, 5
 ;
 
 
@@ -240,7 +240,7 @@ LEFT JOIN daily_success s
     ON s.cohort      = l.cohort
    AND s.tst_grp_cd  = l.tst_grp_cd
    AND s.vintage_day = ds.day_num
-ORDER BY COHORT, TST_GRP_CD, VINTAGE_DAY
+ORDER BY 3, 4, 5
 ;
 
 
@@ -305,7 +305,7 @@ LEFT JOIN daily_success s
     ON s.cohort      = l.cohort
    AND s.tst_grp_cd  = l.tst_grp_cd
    AND s.vintage_day = ds.day_num
-ORDER BY COHORT, TST_GRP_CD, VINTAGE_DAY
+ORDER BY 3, 4, 5
 ;
 
 
@@ -357,7 +357,7 @@ daily_success AS (
           AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
         GROUP BY a.CLNT_NO, a.TST_GRP_CD, a.TREATMT_STRT_DT
     ) s
-    GROUP BY 2, 3, 4
+    GROUP BY 1, 2, 3, 4
     UNION ALL
     SELECT
         'SECONDARY_USAGE'                      AS metric,
@@ -384,7 +384,7 @@ daily_success AS (
           AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
         GROUP BY a.CLNT_NO, a.TST_GRP_CD, a.TREATMT_STRT_DT
     ) s
-    GROUP BY 2, 3, 4
+    GROUP BY 1, 2, 3, 4
 )
 SELECT
     'VUT'        AS MNE,
@@ -406,7 +406,7 @@ LEFT JOIN daily_success s
    AND s.cohort      = l.cohort
    AND s.tst_grp_cd  = l.tst_grp_cd
    AND s.vintage_day = ds.day_num
-ORDER BY METRIC, COHORT, TST_GRP_CD, VINTAGE_DAY
+ORDER BY 2, 3, 4, 5
 ;
 
 
@@ -458,7 +458,7 @@ daily_success AS (
           AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
         GROUP BY a.CLNT_NO, a.TST_GRP_CD, a.TREATMT_STRT_DT
     ) s
-    GROUP BY 2, 3, 4
+    GROUP BY 1, 2, 3, 4
     UNION ALL
     SELECT
         'SECONDARY_USAGE'                      AS metric,
@@ -485,7 +485,7 @@ daily_success AS (
           AND a.TREATMT_STRT_DT BETWEEN DATE '2025-01-01' AND DATE '2026-03-31'
         GROUP BY a.CLNT_NO, a.TST_GRP_CD, a.TREATMT_STRT_DT
     ) s
-    GROUP BY 2, 3, 4
+    GROUP BY 1, 2, 3, 4
 )
 SELECT
     'VAW'        AS MNE,
@@ -507,5 +507,5 @@ LEFT JOIN daily_success s
    AND s.cohort      = l.cohort
    AND s.tst_grp_cd  = l.tst_grp_cd
    AND s.vintage_day = ds.day_num
-ORDER BY METRIC, COHORT, TST_GRP_CD, VINTAGE_DAY
+ORDER BY 2, 3, 4, 5
 ;
