@@ -65,6 +65,7 @@ CAMPAIGNS = {
         "name": "VVD Black Friday Cyber Monday",
         "success_type": "ACQUISITION",
         "primary_metric": "card_acquisition",
+        "secondary_metric": "card_usage",
         "test_control": "95/5",
         "deployment": "Batch"
     },
@@ -1557,17 +1558,21 @@ for (mne, rpt) in sorted(rpt_data.keys()):
 
 
 # ============================================================
-# CELL 10: VINTAGE CURVE CONSTRUCTION
-# Builds day-by-day cumulative success curves per campaign x cohort x test group.
-# Output schema matches Vintage/Vvd pipeline:
-#   MNE | COHORT | TST_GRP_CD | RPT_GRP_CD | METRIC | DAY | WINDOW_DAYS | CLIENT_CNT | SUCCESS_CNT | RATE
+# CELL 10: VINTAGE CURVES (success metrics, monthly cohort)
+# Day-by-day cumulative success per campaign x cohort x test group,
+# matching VVD_SUCCESS_LOGIC_FINAL.sql (locked 2026-05-01).
+#
+# Output schema:
+#   MNE | METRIC | COHORT | TST_GRP_CD | VINTAGE_DAY | LEADS | SUCCESS_CUM
+# Windows per campaign (per FINAL.sql):
+#   VCN 30d  VDA 90d  VDT 30d  VUI 30d  VUT 90d  VAW 30d
 # ============================================================
 
 import pandas as pd
 import base64
+from pyspark.sql.window import Window
 
 def download_csv(data, filename="results.csv"):
-    """Create a clickable download link for a DataFrame in Jupyter."""
     csv_data = data.to_csv(index=False)
     size_mb = len(csv_data.encode('utf-8')) / (1024 * 1024)
     if size_mb > 50:
@@ -1582,205 +1587,124 @@ def download_csv(data, filename="results.csv"):
     )
     display(HTML(f'<div style="margin:5px 0;">{link} <span style="color:#666;">({size_mb:.2f} MB)</span></div>'))
 
-# Map each metric to its FIRST_*_DT column in result_df
-METRIC_TO_DATE_COL = {
-    metric: f"FIRST_{col}_DT"
-    for metric, col in METRIC_TO_COLUMN.items()
+# campaign -> [(METRIC label, FIRST_*_DT column, window in days)] per FINAL.sql
+CAMPAIGN_METRICS = {
+    "VCN": [("PRIMARY_ACQUISITION",   "FIRST_ACQUISITION_SUCCESS_DT",  30)],
+    "VDA": [("PRIMARY_ACQUISITION",   "FIRST_ACQUISITION_SUCCESS_DT",  90),
+            ("SECONDARY_USAGE",       "FIRST_USAGE_SUCCESS_DT",        90)],
+    "VDT": [("PRIMARY_ACTIVATION",    "FIRST_ACTIVATION_SUCCESS_DT",   30)],
+    "VUI": [("PRIMARY_USAGE",         "FIRST_USAGE_SUCCESS_DT",        30)],
+    "VUT": [("PRIMARY_PROVISIONING",  "FIRST_PROVISIONING_SUCCESS_DT", 90),
+            ("SECONDARY_USAGE",       "FIRST_USAGE_SUCCESS_DT",        90)],
+    "VAW": [("PRIMARY_PROVISIONING",  "FIRST_PROVISIONING_SUCCESS_DT", 30),
+            ("SECONDARY_USAGE",       "FIRST_USAGE_SUCCESS_DT",        30)],
 }
-# Email engagement metrics use their own date columns
-METRIC_TO_DATE_COL["email_sent"] = "EMAIL_SENT_DT"
-METRIC_TO_DATE_COL["email_open"] = "EMAIL_OPENED_DT"
-METRIC_TO_DATE_COL["email_click"] = "EMAIL_CLICKED_DT"
-METRIC_TO_DATE_COL["email_unsub"] = "EMAIL_UNSUBSCRIBED_DT"
 
-# Determine which metrics apply to each campaign
-# PRIMARY always applies; SECONDARY if configured; EMAIL_OPEN/EMAIL_CLICK if campaign has email clients
-campaign_metrics = {}
-for mne, cfg in CAMPAIGNS.items():
-    metrics = [cfg["primary_metric"]]
-    if "secondary_metric" in cfg:
-        metrics.append(cfg["secondary_metric"])
-    campaign_metrics[mne] = metrics
+def build_vintage_curves(df, cohort_col):
+    """Build vintage curves from result_df. Returns Spark DataFrame.
 
-# Check which campaigns have email-channel deployments
-email_mnes = [
-    str(r.MNE) for r in
-    result_df.filter(F.col("TACTIC_CELL_CD").contains("EM"))
-    .select("MNE").distinct().collect()
-]
-for mne in email_mnes:
-    campaign_metrics[mne].extend(["email_sent", "email_open", "email_click", "email_unsub"])
-
-# Build one long DataFrame: one row per (deployment, metric) with days_to_success computed
-# Then explode day range 0..WINDOW_DAYS and aggregate
-curve_parts = []
-
-for mne, metrics in campaign_metrics.items():
-    mne_df = result_df.filter(F.col("MNE") == mne)
-    for metric in metrics:
-        date_col = METRIC_TO_DATE_COL[metric]
-
-        metric_curve = (
-            mne_df
-            .withColumn("METRIC", F.lit(metric))
-            .withColumn("DAYS_TO_SUCCESS",
-                F.when(F.col(date_col).isNotNull(),
-                       F.datediff(F.col(date_col), F.col("TREATMT_STRT_DT")))
+    cohort_col: name of the column to use as COHORT (e.g. 'COHORT' for monthly,
+                'FQ_COHORT' for fiscal quarter).
+    """
+    legs = []
+    for mne, metrics in CAMPAIGN_METRICS.items():
+        mne_df = df.filter(F.col("MNE") == mne)
+        for metric_label, date_col, window in metrics:
+            days_to_success = F.datediff(F.col(date_col), F.col("TREATMT_STRT_DT"))
+            leg = (
+                mne_df
+                .withColumn("METRIC", F.lit(metric_label))
+                .withColumn("WINDOW", F.lit(window))
+                .withColumn("DAYS_TO_SUCCESS",
+                    F.when(F.col(date_col).isNotNull() & (days_to_success <= window),
+                           days_to_success)
+                )
+                .select(
+                    "MNE", "METRIC",
+                    F.col(cohort_col).alias("COHORT"),
+                    "TST_GRP_CD", "WINDOW", "DAYS_TO_SUCCESS"
+                )
             )
+            legs.append(leg)
+
+    all_legs = legs[0]
+    for part in legs[1:]:
+        all_legs = all_legs.unionByName(part)
+
+    group_cols = ["MNE", "METRIC", "COHORT", "TST_GRP_CD"]
+
+    group_stats = (
+        all_legs
+        .groupBy(*group_cols)
+        .agg(
+            F.count("*").alias("LEADS"),
+            F.first("WINDOW").alias("WINDOW"),
         )
-        curve_parts.append(
-            metric_curve.select(
-                "MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD",
-                "METRIC", "WINDOW_DAYS", "DAYS_TO_SUCCESS"
-            )
-        )
-
-# Union all campaign x metric combinations
-all_curves = curve_parts[0]
-for part in curve_parts[1:]:
-    all_curves = all_curves.unionByName(part)
-
-# Compute CLIENT_CNT and median WINDOW_DAYS per group
-group_cols = ["MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC"]
-group_stats = (
-    all_curves
-    .groupBy(*group_cols)
-    .agg(
-        F.count("*").alias("CLIENT_CNT"),
-        F.expr("percentile_approx(WINDOW_DAYS, 0.5)").alias("WINDOW_DAYS"),
     )
-)
 
-# Generate day range 0..WINDOW_DAYS per group, then count successes at each day
-# explode(sequence(0, WINDOW_DAYS)) produces one row per day value
-day_range = (
-    group_stats
-    .withColumn("DAY", F.explode(F.sequence(F.lit(0), F.col("WINDOW_DAYS"))))
-)
-
-# Compute per-group success counts at each day threshold
-# A client counts as success at DAY d if DAYS_TO_SUCCESS <= d
-success_at_day = (
-    all_curves
-    .groupBy(*group_cols, "DAYS_TO_SUCCESS")
-    .agg(F.count("*").alias("cnt"))
-    .filter(F.col("DAYS_TO_SUCCESS").isNotNull())
-)
-
-# Cross join day range with success counts, then sum where DAYS_TO_SUCCESS <= DAY
-vintage_curves = (
-    day_range
-    .join(success_at_day, on=group_cols, how="left")
-    .filter(
-        F.col("DAYS_TO_SUCCESS").isNull() |
-        (F.col("DAYS_TO_SUCCESS") <= F.col("DAY"))
+    day_spine = (
+        group_stats
+        .withColumn("VINTAGE_DAY", F.explode(F.sequence(F.lit(0), F.col("WINDOW"))))
+        .select(*group_cols, "VINTAGE_DAY", "LEADS")
     )
-    .groupBy(*group_cols, "DAY", "WINDOW_DAYS", "CLIENT_CNT")
-    .agg(F.coalesce(F.sum("cnt"), F.lit(0)).alias("SUCCESS_CNT"))
-    .withColumn("RATE", F.col("SUCCESS_CNT") / F.col("CLIENT_CNT") * 100)
-    .select("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC",
-            "DAY", "WINDOW_DAYS", "CLIENT_CNT", "SUCCESS_CNT", "RATE")
-    .orderBy("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC", "DAY")
-)
 
+    success_per_day = (
+        all_legs
+        .filter(F.col("DAYS_TO_SUCCESS").isNotNull())
+        .groupBy(*group_cols, F.col("DAYS_TO_SUCCESS").alias("VINTAGE_DAY"))
+        .agg(F.count("*").alias("DAY_SUCCESS"))
+    )
+
+    w = (Window
+         .partitionBy(*group_cols)
+         .orderBy("VINTAGE_DAY")
+         .rowsBetween(Window.unboundedPreceding, Window.currentRow))
+
+    return (
+        day_spine
+        .join(success_per_day, on=[*group_cols, "VINTAGE_DAY"], how="left")
+        .fillna({"DAY_SUCCESS": 0})
+        .withColumn("SUCCESS_CUM", F.sum("DAY_SUCCESS").over(w))
+        .select("MNE", "METRIC", "COHORT", "TST_GRP_CD",
+                "VINTAGE_DAY", "LEADS", "SUCCESS_CUM")
+        .orderBy("MNE", "METRIC", "COHORT", "TST_GRP_CD", "VINTAGE_DAY")
+    )
+
+# Monthly cohort
+vintage_curves = build_vintage_curves(result_df, "COHORT")
 vintage_curves_pd = vintage_curves.toPandas()
-print(f"Vintage curves: {len(vintage_curves_pd):,} rows")
+print(f"Monthly vintage curves: {len(vintage_curves_pd):,} rows")
 print(vintage_curves_pd.head(20).to_string(index=False))
-
-# Clickable download link — same as Vintage/Vvd pipeline
 download_csv(vintage_curves_pd, "vvd_v3_vintage_curves.csv")
 
 
 # ============================================================
 # CELL 10b: FISCAL QUARTER VINTAGE CURVES
-# Same logic as Cell 10 but grouped by RBC fiscal quarter instead of calendar month.
-# RBC fiscal year starts November 1: Nov-Jan = Q1, Feb-Apr = Q2, May-Jul = Q3, Aug-Oct = Q4.
+# Same logic as Cell 10 but COHORT = RBC fiscal quarter (FYxxQy).
+# Fiscal year starts November 1: Nov-Jan = Q1, Feb-Apr = Q2, May-Jul = Q3, Aug-Oct = Q4.
 # ============================================================
-
-fq_base = result_df.filter(F.col("TREATMT_STRT_DT") < "2026-03-01")
 
 fq_month = F.month(F.col("TREATMT_STRT_DT"))
 fq_year = F.year(F.col("TREATMT_STRT_DT"))
-
 fiscal_year = F.when(fq_month >= 11, fq_year + 1).otherwise(fq_year)
 fiscal_quarter = (
     F.when(fq_month.isin([11, 12, 1]), F.lit("Q1"))
-     .when(fq_month.isin([2, 3, 4]), F.lit("Q2"))
-     .when(fq_month.isin([5, 6, 7]), F.lit("Q3"))
+     .when(fq_month.isin([2, 3, 4]),  F.lit("Q2"))
+     .when(fq_month.isin([5, 6, 7]),  F.lit("Q3"))
      .otherwise(F.lit("Q4"))
 )
 fiscal_cohort = F.concat(F.lit("FY"), fiscal_year.cast("string"), fiscal_quarter)
 
-fq_base = fq_base.withColumn("FQ_COHORT", fiscal_cohort)
-
-fq_curve_parts = []
-
-for mne, metrics in campaign_metrics.items():
-    mne_df = fq_base.filter(F.col("MNE") == mne)
-    for metric in metrics:
-        date_col = METRIC_TO_DATE_COL[metric]
-
-        metric_curve = (
-            mne_df
-            .withColumn("METRIC", F.lit(metric))
-            .withColumn("DAYS_TO_SUCCESS",
-                F.when(F.col(date_col).isNotNull(),
-                       F.datediff(F.col(date_col), F.col("TREATMT_STRT_DT")))
-            )
-        )
-        fq_curve_parts.append(
-            metric_curve.select(
-                "MNE", F.col("FQ_COHORT").alias("COHORT"),
-                "TST_GRP_CD", "RPT_GRP_CD",
-                "METRIC", "WINDOW_DAYS", "DAYS_TO_SUCCESS"
-            )
-        )
-
-fq_all_curves = fq_curve_parts[0]
-for part in fq_curve_parts[1:]:
-    fq_all_curves = fq_all_curves.unionByName(part)
-
-fq_group_cols = ["MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC"]
-fq_group_stats = (
-    fq_all_curves
-    .groupBy(*fq_group_cols)
-    .agg(
-        F.count("*").alias("CLIENT_CNT"),
-        F.expr("percentile_approx(WINDOW_DAYS, 0.5)").alias("WINDOW_DAYS"),
-    )
+fq_base = (
+    result_df
+    .filter(F.col("TREATMT_STRT_DT") < "2026-03-01")
+    .withColumn("FQ_COHORT", fiscal_cohort)
 )
 
-fq_day_range = (
-    fq_group_stats
-    .withColumn("DAY", F.explode(F.sequence(F.lit(0), F.col("WINDOW_DAYS"))))
-)
-
-fq_success_at_day = (
-    fq_all_curves
-    .groupBy(*fq_group_cols, "DAYS_TO_SUCCESS")
-    .agg(F.count("*").alias("cnt"))
-    .filter(F.col("DAYS_TO_SUCCESS").isNotNull())
-)
-
-fq_vintage_curves = (
-    fq_day_range
-    .join(fq_success_at_day, on=fq_group_cols, how="left")
-    .filter(
-        F.col("DAYS_TO_SUCCESS").isNull() |
-        (F.col("DAYS_TO_SUCCESS") <= F.col("DAY"))
-    )
-    .groupBy(*fq_group_cols, "DAY", "WINDOW_DAYS", "CLIENT_CNT")
-    .agg(F.coalesce(F.sum("cnt"), F.lit(0)).alias("SUCCESS_CNT"))
-    .withColumn("RATE", F.col("SUCCESS_CNT") / F.col("CLIENT_CNT") * 100)
-    .select("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC",
-            "DAY", "WINDOW_DAYS", "CLIENT_CNT", "SUCCESS_CNT", "RATE")
-    .orderBy("MNE", "COHORT", "TST_GRP_CD", "RPT_GRP_CD", "METRIC", "DAY")
-)
-
+fq_vintage_curves = build_vintage_curves(fq_base, "FQ_COHORT")
 fq_vintage_pd = fq_vintage_curves.toPandas()
 print(f"Fiscal quarter vintage curves: {len(fq_vintage_pd):,} rows")
 print(fq_vintage_pd.head(20).to_string(index=False))
-
 download_csv(fq_vintage_pd, "vvd_v3_vintage_curves_fiscal_quarter.csv")
 
 
