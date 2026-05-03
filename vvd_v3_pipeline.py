@@ -203,10 +203,14 @@ if raw_card is None:
     card_acquisition_df = spark.createDataFrame([], "CLNT_NO STRING, SUCCESS_DT DATE")
     card_activation_df = spark.createDataFrame([], "CLNT_NO STRING, SUCCESS_DT DATE")
 else:
+    # Match FINAL.sql: card.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DLY)
+    latest_card_snap = raw_card.agg(F.max("SNAP_DT")).collect()[0][0]
+
     card_base = (
         raw_card
         .filter(F.col("STS_CD").isin(["06", "08"]))
         .filter(F.col("SRVC_ID") == 36)
+        .filter(F.col("SNAP_DT") == F.lit(latest_card_snap))
         .filter(F.col("ISS_DT").isNotNull())
         .withColumn("CLNT_NO", F.regexp_replace(F.trim(F.col("CLNT_NO")), "^0+", ""))
     )
@@ -243,12 +247,12 @@ else:
     card_usage_df = (
         raw_txn
         .filter(F.col("SRVC_CD") == 36)
-        .filter(
-            ((F.col("TXN_TP") == 10) & (F.col("MSG_TP") == "0210")) |
-            ((F.col("TXN_TP") == 13) & (F.col("MSG_TP") == "0210")) |
-            ((F.col("TXN_TP") == 12) & (F.col("MSG_TP") == "0220"))
-        )
+        .filter(F.col("MSG_TP") == "0220")
         .filter(F.col("AMT1") > 0)
+        .filter(
+            ((F.col("TXN_TP").isin([10, 13])) & (F.col("RCNCL_REAS_CD").isin(["M", "S"]))) |
+            ((F.col("TXN_TP") == 22) & (F.col("RCNCL_REAS_CD").isin(["P", "E"])))
+        )
         .withColumn("CLNT_NO", F.regexp_replace(F.substring(F.col("CLNT_CRD_NO"), 7, 9), "^0+", ""))
         .select("CLNT_NO", F.col("TXN_DT").cast("date").alias("SUCCESS_DT"))
         .filter(F.col("SUCCESS_DT").isNotNull())
@@ -267,15 +271,12 @@ SELECT DISTINCT
 FROM DDWV05.CLNT_CRD_POS_LOG B
 INNER JOIN DL_DECMAN.TOKEN_LIST C
     ON B.TOKN_REQSTR_ID = C.TOKEN_ID
-WHERE B.AMT1 = 0
-    AND SUBSTR(B.CLNT_CRD_NO, 1, 5) = '45190'
-    AND SUBSTR(B.VISA_DR_CRD_NO, 1, 5) = '45199'
-    AND SUBSTR(B.TOKN_REQSTR_ID, 1, 1) > '0'
+WHERE B.SRVC_CD = 36
+    AND B.AMT1 = 0
+    AND (B.VISA_DR_CRD_NO LIKE '45190%' OR B.VISA_DR_CRD_NO LIKE '45199%')
     AND B.POS_ENTR_MODE_CD_NON_EMV = '000'
-    AND B.SRVC_CD = 36
-    AND C.TOKEN_WALLET_IND = 'Y'
-    AND B.MRCHNT_NM = 'Visa Provisioning Serv'
     AND B.APPROVAL_CODE IS NOT NULL
+    AND C.TOKEN_WALLET_IND = 'Y'
     AND B.TXN_DT >= DATE '{min_year}-01-01'
 """
 
