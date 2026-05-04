@@ -12,11 +12,16 @@
 
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+from pyspark import StorageLevel
 
 # ---- Config -----------------------------------------------------------------
 TACTIC_BASE = "/prod/sz/tsz/00150/cc/DTZTA_T_TACTIC_EVNT_HIST/"
 CARD_BASE   = "/prod/sz/tsz/00050/data/DDWTA_VISA_DR_CRD/PartitionColumn=Latest/"
 POS_BASE    = "/prod/sz/tsz/00050/data/DDWTA_T_PT_OF_SALE_TXN/"
+
+# HDFS output path — written once, reused on next session via:
+#   result = spark.read.parquet(OUTPUT_PATH)
+OUTPUT_PATH = "/user/427966379/vvd_vintage_curves.parquet"
 
 YEARS     = [2024, 2025, 2026]
 DATE_FROM = "2025-01-01"
@@ -140,6 +145,11 @@ SUCCESS_EVENTS = {
     "wallet_provisioning": wallet_provisioning,
 }
 
+# Cache event tables so each (campaign × metric) leg reuses them without
+# re-reading the underlying parquet.
+for _df in SUCCESS_EVENTS.values():
+    _df.persist(StorageLevel.MEMORY_AND_DISK)
+
 
 # ---- Step 3: Vintage curve builder -----------------------------------------
 def vintage_for(mne, success_df, window):
@@ -220,13 +230,17 @@ result = all_curves[0]
 for c in all_curves[1:]:
     result = result.unionByName(c)
 
-result_pd = (
-    result
-    .orderBy("MNE", "METRIC", "COHORT", "TST_GRP_CD", "VINTAGE_DAY")
-    .toPandas()
-)
-print(f"\nVintage curves: {len(result_pd):,} rows")
+result = result.orderBy("MNE", "METRIC", "COHORT", "TST_GRP_CD", "VINTAGE_DAY")
+result.persist(StorageLevel.MEMORY_AND_DISK)
+
+# Persist to HDFS so the next session can skip everything above:
+#   result = spark.read.parquet(OUTPUT_PATH)
+result.write.mode("overwrite").parquet(OUTPUT_PATH)
+print(f"\nSaved to HDFS: {OUTPUT_PATH}")
+
+result_pd = result.toPandas()
+print(f"Vintage curves: {len(result_pd):,} rows")
 print(result_pd.head(20).to_string(index=False))
 
 result_pd.to_csv("vvd_vintage_curves_hdfs.csv", index=False)
-print("\nSaved: vvd_vintage_curves_hdfs.csv")
+print("Saved CSV: vvd_vintage_curves_hdfs.csv")
