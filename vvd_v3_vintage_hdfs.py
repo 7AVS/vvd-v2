@@ -58,15 +58,15 @@ print(f"Tactic population: {tactic.count():,} rows, "
 # ---- Step 2: Success event tables (FINAL.sql filters verbatim) -------------
 
 # 2a. Card data: acquisition (ISS_DT) + activation (ACTV_DT)
+# Latest snapshot is already enforced by the Hive partition path
+# (`PartitionColumn=Latest` in CARD_BASE) — no SNAP_DT column to filter on.
 card_paths = [CARD_BASE + f"CAPTR_DT={y}*" for y in YEARS]
 raw_card = spark.read.parquet(*card_paths)
-latest_snap = raw_card.agg(F.max("SNAP_DT")).collect()[0][0]
 
 card = (
     raw_card
     .filter(F.col("STS_CD").isin(["06", "08"]))
     .filter(F.col("SRVC_ID") == 36)
-    .filter(F.col("SNAP_DT") == F.lit(latest_snap))
     .withColumn("CLNT_NO", F.regexp_replace(F.trim(F.col("CLNT_NO")), "^0+", ""))
 )
 

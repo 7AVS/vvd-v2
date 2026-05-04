@@ -203,14 +203,12 @@ if raw_card is None:
     card_acquisition_df = spark.createDataFrame([], "CLNT_NO STRING, SUCCESS_DT DATE")
     card_activation_df = spark.createDataFrame([], "CLNT_NO STRING, SUCCESS_DT DATE")
 else:
-    # Match FINAL.sql: card.SNAP_DT = (SELECT MAX(SNAP_DT) FROM DDWV01.VISA_DR_CRD_DLY)
-    latest_card_snap = raw_card.agg(F.max("SNAP_DT")).collect()[0][0]
-
+    # Latest snapshot is enforced by Hive partition path PartitionColumn=Latest
+    # in CARD_DATA_PATH; the HDFS table has no SNAP_DT column to filter on.
     card_base = (
         raw_card
         .filter(F.col("STS_CD").isin(["06", "08"]))
         .filter(F.col("SRVC_ID") == 36)
-        .filter(F.col("SNAP_DT") == F.lit(latest_card_snap))
         .filter(F.col("ISS_DT").isNotNull())
         .withColumn("CLNT_NO", F.regexp_replace(F.trim(F.col("CLNT_NO")), "^0+", ""))
     )
