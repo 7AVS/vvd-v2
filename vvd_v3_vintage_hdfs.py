@@ -10,9 +10,29 @@
 # wallet pull). VUT/VAW primary will be empty if EDW is unavailable.
 # =============================================================================
 
+import base64
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from pyspark import StorageLevel
+from IPython.display import display, HTML
+
+
+def download_csv(df_pd, filename="results.csv"):
+    """Render a clickable download link for a pandas DataFrame in Jupyter."""
+    csv = df_pd.to_csv(index=False)
+    size_mb = len(csv.encode("utf-8")) / (1024 * 1024)
+    if size_mb > 50:
+        print(f"Data too large ({size_mb:.1f} MB). Filter before exporting.")
+        return
+    b64 = base64.b64encode(csv.encode()).decode()
+    link = (
+        f'<a download="{filename}" href="data:text/csv;base64,{b64}" '
+        f'style="padding:6px 12px;background:#2196F3;color:white;'
+        f'text-decoration:none;border-radius:3px;display:inline-block;">'
+        f'Download {filename}</a>'
+    )
+    display(HTML(f'<div style="margin:5px 0;">{link} '
+                 f'<span style="color:#666;">({size_mb:.2f} MB)</span></div>'))
 
 # ---- Config -----------------------------------------------------------------
 TACTIC_BASE = "/prod/sz/tsz/00150/cc/DTZTA_T_TACTIC_EVNT_HIST/"
@@ -242,5 +262,4 @@ result_pd = result.toPandas()
 print(f"Vintage curves: {len(result_pd):,} rows")
 print(result_pd.head(20).to_string(index=False))
 
-result_pd.to_csv("vvd_vintage_curves_hdfs.csv", index=False)
-print("Saved CSV: vvd_vintage_curves_hdfs.csv")
+download_csv(result_pd, "vvd_vintage_curves_hdfs.csv")
