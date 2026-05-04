@@ -189,10 +189,21 @@ def vintage_for(mne, success_df, window):
          .orderBy("VINTAGE_DAY")
          .rowsBetween(Window.unboundedPreceding, Window.currentRow))
 
+    # Truncate each group at its last event day so the pivot doesn't show a
+    # flat tail after the last response. Groups with zero events drop out.
+    last_event = (
+        per_day
+        .filter(F.col("DAY_SUCCESS") > 0)
+        .groupBy("COHORT", "TST_GRP_CD")
+        .agg(F.max("VINTAGE_DAY").alias("LAST_EVENT_DAY"))
+    )
+
     return (
         spine.join(per_day, ["COHORT", "TST_GRP_CD", "VINTAGE_DAY"], "left")
              .fillna({"DAY_SUCCESS": 0})
              .withColumn("SUCCESS_CUM", F.sum("DAY_SUCCESS").over(w))
+             .join(last_event, ["COHORT", "TST_GRP_CD"], "inner")
+             .filter(F.col("VINTAGE_DAY") <= F.col("LAST_EVENT_DAY"))
              .select("COHORT", "TST_GRP_CD", "VINTAGE_DAY", "LEADS", "SUCCESS_CUM")
     )
 
